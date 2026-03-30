@@ -138,14 +138,18 @@ Linux/macOS:
 - POST /api/ai/image/brief
 - GET /api/ai/artifacts/`<filename>`
 
-## 公网访问（cpolar 等）
+## 公网访问（cpolar / NATAPP）
 
 当运行在 Copaw/受限环境，无法直接暴露 localhost 时，可使用隧道工具。
 
-启动前配置：
+启动前可配置以下变量（两组任选其一）：
 
-- PUBLIC_API_BASE
-- PUBLIC_DASHBOARD_BASE
+- 通用变量：
+   - PUBLIC_API_BASE
+   - PUBLIC_DASHBOARD_BASE
+- NATAPP 变量（脚本已支持）：
+   - NATAPP_API_BASE
+   - NATAPP_DASHBOARD_BASE
 
 Windows 示例：
 
@@ -160,6 +164,22 @@ Linux/macOS 示例：
 ```bash
 export PUBLIC_API_BASE="https://xxx.cpolar.top"
 export PUBLIC_DASHBOARD_BASE="https://yyy.cpolar.top"
+./scripts/start_all.sh
+```
+
+NATAPP 示例（PowerShell）：
+
+```powershell
+$env:NATAPP_API_BASE="https://api-xxxxx.natappfree.cc"
+$env:NATAPP_DASHBOARD_BASE="https://dash-xxxxx.natappfree.cc"
+powershell -ExecutionPolicy Bypass -File .\scripts\Start-All.ps1
+```
+
+NATAPP 示例（Linux/macOS）：
+
+```bash
+export NATAPP_API_BASE="https://api-xxxxx.natappfree.cc"
+export NATAPP_DASHBOARD_BASE="https://dash-xxxxx.natappfree.cc"
 ./scripts/start_all.sh
 ```
 
@@ -188,8 +208,8 @@ python ops/setup_openclaw.py --mode production --apply
    - 运行 chmod +x ./scripts/*.sh。
 3. Python 不在 PATH
    - Windows 确认 py/python，Linux/macOS 确认 python3/python。
-4. cpolar 域名可打开但 API 调用失败
-   - 重新检查 PUBLIC_API_BASE 和 PUBLIC_DASHBOARD_BASE，并重启服务。
+4. cpolar/NATAPP 域名可打开但 API 调用失败
+   - 重新检查 PUBLIC_API_BASE / PUBLIC_DASHBOARD_BASE 或 NATAPP_API_BASE / NATAPP_DASHBOARD_BASE，并重启服务。
 
 ## 致谢
 

@@ -1,6 +1,6 @@
 ---
 name: gold-trading-production-ops
-description: 用于在 Windows 或 Linux/macOS 本地运行积存金生产应用并执行 AI 巡检。当用户需要：启动服务、动态端口分配、导入 OpenClaw 定时任务、默认启用 cpolar 公网地址、检查 API/AI 能力、定位常见启动故障时使用。
+description: 用于在 Windows 或 Linux/macOS 本地运行积存金生产应用并执行 AI 巡检。当用户需要：启动服务、动态端口分配、导入 OpenClaw 定时任务、默认启用 cpolar 或 NATAPP 公网地址、检查 API/AI 能力、定位常见启动故障时使用。
 ---
 
 # Gold Trading Production Ops Skill
@@ -8,7 +8,7 @@ description: 用于在 Windows 或 Linux/macOS 本地运行积存金生产应用
 ## Scope
 
 This skill is for production-style local operation on Windows and Linux/macOS.
-It focuses on service startup, dynamic port fallback, OpenClaw scheduled-task import, default cpolar setup, API health checks, AI capability checks, and production template usage.
+It focuses on service startup, dynamic port fallback, OpenClaw scheduled-task import, default tunnel setup (cpolar/NATAPP), API health checks, AI capability checks, and production template usage.
 
 ## Repository
 
@@ -155,6 +155,35 @@ Recommended default behavior for this skill:
 2. If user has not provided domains, ask them to provide two cpolar URLs (API and Dashboard).
 3. Always write `PUBLIC_API_BASE` and `PUBLIC_DASHBOARD_BASE` before startup commands.
 4. Validate that `web/runtime-config.js` contains cpolar URLs after startup.
+
+## Public Access via NATAPP
+
+Use this when users prefer NATAPP channels for API and Dashboard.
+
+1. Ensure NATAPP provides two public URLs:
+   - API URL -> local API port
+   - Dashboard URL -> local Dashboard port
+2. Export NATAPP variables before startup:
+   - `NATAPP_API_BASE`
+   - `NATAPP_DASHBOARD_BASE`
+3. Start services with standard scripts.
+4. Verify `web/runtime-config.js` contains NATAPP URLs.
+
+Example (PowerShell):
+
+`$env:NATAPP_API_BASE="https://api-xxxxx.natappfree.cc"`
+
+`$env:NATAPP_DASHBOARD_BASE="https://dash-xxxxx.natappfree.cc"`
+
+`powershell -ExecutionPolicy Bypass -File .\scripts\Start-All.ps1`
+
+Example (Linux/macOS):
+
+`export NATAPP_API_BASE="https://api-xxxxx.natappfree.cc"`
+
+`export NATAPP_DASHBOARD_BASE="https://dash-xxxxx.natappfree.cc"`
+
+`./scripts/start_all.sh`
 
 ## Quick Troubleshooting
 

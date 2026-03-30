@@ -65,8 +65,8 @@ EOF
 }
 
 write_runtime_config() {
-    local api_base="${PUBLIC_API_BASE:-http://127.0.0.1:$API_PORT}"
-    local dashboard_base="${PUBLIC_DASHBOARD_BASE:-http://127.0.0.1:$DASHBOARD_PORT}"
+    local api_base="${PUBLIC_API_BASE:-${NATAPP_API_BASE:-http://127.0.0.1:$API_PORT}}"
+    local dashboard_base="${PUBLIC_DASHBOARD_BASE:-${NATAPP_DASHBOARD_BASE:-http://127.0.0.1:$DASHBOARD_PORT}}"
     cat > "$PROJECT_ROOT/web/runtime-config.js" <<EOF
 window.__API_BASE__ = '$api_base';
 window.__DASHBOARD_BASE__ = '$dashboard_base';

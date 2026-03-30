@@ -255,8 +255,25 @@ function Write-WebRuntimeConfig {
     $webDir = Join-Path $ProjectRoot "web"
     Ensure-Directory -Path $webDir
 
-    $apiBase = if ($env:PUBLIC_API_BASE) { $env:PUBLIC_API_BASE } else { "http://127.0.0.1:$($Ports.api)" }
-    $dashboardBase = if ($env:PUBLIC_DASHBOARD_BASE) { $env:PUBLIC_DASHBOARD_BASE } else { "http://127.0.0.1:$($Ports.dashboard)" }
+    $apiBase = if ($env:PUBLIC_API_BASE) {
+        $env:PUBLIC_API_BASE
+    }
+    elseif ($env:NATAPP_API_BASE) {
+        $env:NATAPP_API_BASE
+    }
+    else {
+        "http://127.0.0.1:$($Ports.api)"
+    }
+
+    $dashboardBase = if ($env:PUBLIC_DASHBOARD_BASE) {
+        $env:PUBLIC_DASHBOARD_BASE
+    }
+    elseif ($env:NATAPP_DASHBOARD_BASE) {
+        $env:NATAPP_DASHBOARD_BASE
+    }
+    else {
+        "http://127.0.0.1:$($Ports.dashboard)"
+    }
 
     $configPath = Join-Path $webDir "runtime-config.js"
     $content = @(
