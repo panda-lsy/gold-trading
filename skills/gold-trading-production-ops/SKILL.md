@@ -10,6 +10,13 @@ description: 用于在 Windows 本地运行积存金生产应用并执行 AI 巡
 This skill is for production-style local operation on Windows.
 It focuses on service startup, API health checks, AI capability checks, and OpenClaw production template usage.
 
+## Repository
+
+- GitHub: `https://github.com/panda-lsy/gold-trading`
+- Branch: `main`
+
+For skill deployment, use this repository URL as the source when importing into Copaw/Space.
+
 ## Prerequisites
 
 1. Python 3.10+ installed and available in PATH.
