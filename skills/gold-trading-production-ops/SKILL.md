@@ -1,13 +1,13 @@
 ---
 name: gold-trading-production-ops
-description: 用于在 Windows 本地运行积存金生产应用并执行 AI 巡检。当用户需要：启动服务、检查 API/AI 能力、应用 OpenClaw 生产模板、生成行情快报图、定位常见启动故障时使用。
+description: 用于在 Windows 或 Linux/macOS 本地运行积存金生产应用并执行 AI 巡检。当用户需要：启动服务、检查 API/AI 能力、应用 OpenClaw 生产模板、生成行情快报图、定位常见启动故障时使用。
 ---
 
 # Gold Trading Production Ops Skill
 
 ## Scope
 
-This skill is for production-style local operation on Windows.
+This skill is for production-style local operation on Windows and Linux/macOS.
 It focuses on service startup, API health checks, AI capability checks, and OpenClaw production template usage.
 
 ## Repository
@@ -36,6 +36,17 @@ For skill deployment, use this repository URL as the source when importing into 
 4. Start static portal only:
    - `powershell -ExecutionPolicy Bypass -File .\scripts\Start-Web.ps1`
 
+## Core Commands (Linux/macOS)
+
+1. Start all services:
+   - `./scripts/start_all.sh`
+2. Check service status:
+   - `./scripts/status.sh`
+3. Stop all services:
+   - `./scripts/stop_all.sh`
+4. Start static portal only:
+   - `./scripts/start_web.sh`
+
 ## API Validation Checklist
 
 1. API health:
@@ -62,10 +73,12 @@ Expected template file:
 1. Port conflict:
    - Stop all and restart with scripts above.
 2. Python not found:
-   - Install Python 3 and ensure `py` or `python` is on PATH.
+   - Install Python 3 and ensure executable is on PATH (`py/python` on Windows, `python3/python` on Linux/macOS).
 3. AI model dependency missing:
    - Check `optimum-intel`, `transformers`, and model directories.
    - Capability endpoint will show component readiness.
+4. Linux script execution denied:
+   - Run `chmod +x ./scripts/*.sh` and retry.
 
 ## Copaw Space Demonstration Notes
 
