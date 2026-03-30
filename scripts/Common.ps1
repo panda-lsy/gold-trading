@@ -155,6 +155,118 @@ function Test-PortOpen {
     }
 }
 
+function Test-PortAvailable {
+    param([Parameter(Mandatory = $true)][int]$Port)
+
+    if ($Port -le 0 -or $Port -gt 65535) {
+        return $false
+    }
+
+    try {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+        $listener.Start()
+        $listener.Stop()
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-AvailablePort {
+    param(
+        [Parameter(Mandatory = $true)][int]$PreferredPort,
+        [Parameter(Mandatory = $true)][int]$StartPort,
+        [Parameter(Mandatory = $true)][int]$EndPort
+    )
+
+    if (Test-PortAvailable -Port $PreferredPort) {
+        return $PreferredPort
+    }
+
+    for ($port = $StartPort; $port -le $EndPort; $port++) {
+        if (Test-PortAvailable -Port $port) {
+            return $port
+        }
+    }
+
+    throw "No available port found in range $StartPort-$EndPort."
+}
+
+function Get-ServicePorts {
+    param([Parameter(Mandatory = $true)][string]$ProjectRoot)
+
+    $defaults = @{
+        websocket = 8765
+        dashboard = 5000
+        api = 8080
+        portal = 8090
+    }
+
+    $portsFile = Join-Path $ProjectRoot ".service_ports.json"
+    if (-not (Test-Path -LiteralPath $portsFile)) {
+        return $defaults
+    }
+
+    try {
+        $raw = Get-Content -Path $portsFile -Raw -ErrorAction Stop
+        if (-not $raw) {
+            return $defaults
+        }
+
+        $obj = $raw | ConvertFrom-Json -ErrorAction Stop
+        foreach ($key in @("websocket", "dashboard", "api", "portal")) {
+            if ($null -ne $obj.$key -and [int]$obj.$key -gt 0) {
+                $defaults[$key] = [int]$obj.$key
+            }
+        }
+    }
+    catch {
+        return $defaults
+    }
+
+    return $defaults
+}
+
+function Save-ServicePorts {
+    param(
+        [Parameter(Mandatory = $true)][string]$ProjectRoot,
+        [Parameter(Mandatory = $true)][hashtable]$Ports
+    )
+
+    $portsFile = Join-Path $ProjectRoot ".service_ports.json"
+    $payload = [ordered]@{
+        websocket = [int]$Ports.websocket
+        dashboard = [int]$Ports.dashboard
+        api = [int]$Ports.api
+        portal = [int]$Ports.portal
+    }
+
+    $json = $payload | ConvertTo-Json
+    Set-Content -Path $portsFile -Value $json -Encoding ASCII
+}
+
+function Write-WebRuntimeConfig {
+    param(
+        [Parameter(Mandatory = $true)][string]$ProjectRoot,
+        [Parameter(Mandatory = $true)][hashtable]$Ports
+    )
+
+    $webDir = Join-Path $ProjectRoot "web"
+    Ensure-Directory -Path $webDir
+
+    $apiBase = if ($env:PUBLIC_API_BASE) { $env:PUBLIC_API_BASE } else { "http://127.0.0.1:$($Ports.api)" }
+    $dashboardBase = if ($env:PUBLIC_DASHBOARD_BASE) { $env:PUBLIC_DASHBOARD_BASE } else { "http://127.0.0.1:$($Ports.dashboard)" }
+
+    $configPath = Join-Path $webDir "runtime-config.js"
+    $content = @(
+        "window.__API_BASE__ = '$apiBase';",
+        "window.__DASHBOARD_BASE__ = '$dashboardBase';"
+    )
+
+    Set-Content -Path $configPath -Value $content -Encoding ASCII
+}
+
 function Install-CoreDependencies {
     $launcher = Get-PythonLauncher
     $pipInstallParameters = @()

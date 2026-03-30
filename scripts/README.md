@@ -27,5 +27,8 @@ This folder provides Windows-first scripts so daily operations do not depend on 
 
 - PID files are written to the project root (`.ws_pid`, `.web_pid`, `.api_pid`, `.service_pid`, `.portal_pid`).
 - Logs are written to `logs/`.
+- Runtime ports are persisted in `.service_ports.json` (PowerShell) or `.service_ports.env` (shell).
+- Optional env vars for public access (for example cpolar): `PUBLIC_API_BASE` and `PUBLIC_DASHBOARD_BASE`.
+- Optional preferred local ports: `WS_PORT`, `DASHBOARD_PORT`, `API_PORT`, `PORTAL_PORT` (scripts auto-fallback to free ports if occupied).
 - If your environment blocks script execution, run once as admin:
   `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`

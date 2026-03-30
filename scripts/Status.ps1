@@ -49,12 +49,21 @@ Write-Host "=========================================="
 Write-Host "Gold Trading - Service Status"
 Write-Host "=========================================="
 
-Show-ServiceStatus -Name "WebSocket" -PidFile (Join-Path $projectRoot ".ws_pid") -Port 8765
+$ports = Get-ServicePorts -ProjectRoot $projectRoot
+
+Show-ServiceStatus -Name "WebSocket" -PidFile (Join-Path $projectRoot ".ws_pid") -Port ([int]$ports.websocket)
 Show-ServiceStatus -Name "Kline" -PidFile (Join-Path $projectRoot ".kline_pid") -Port 0
-Show-ServiceStatus -Name "Dashboard" -PidFile (Join-Path $projectRoot ".web_pid") -Port 5000
-Show-ServiceStatus -Name "API" -PidFile (Join-Path $projectRoot ".api_pid") -Port 8080
+Show-ServiceStatus -Name "Dashboard" -PidFile (Join-Path $projectRoot ".web_pid") -Port ([int]$ports.dashboard)
+Show-ServiceStatus -Name "API" -PidFile (Join-Path $projectRoot ".api_pid") -Port ([int]$ports.api)
 Show-ServiceStatus -Name "Service" -PidFile (Join-Path $projectRoot ".service_pid") -Port 0
-Show-ServiceStatus -Name "Portal" -PidFile (Join-Path $projectRoot ".portal_pid") -Port 8090
+Show-ServiceStatus -Name "Portal" -PidFile (Join-Path $projectRoot ".portal_pid") -Port ([int]$ports.portal)
+
+Write-Host "URLs:"
+Write-Host "  Dashboard: http://127.0.0.1:$($ports.dashboard)"
+Write-Host "  API:       http://127.0.0.1:$($ports.api)"
+Write-Host "  WebSocket: ws://127.0.0.1:$($ports.websocket)"
+Write-Host "  Portal:    http://127.0.0.1:$($ports.portal)"
+Write-Host ""
 
 Write-Host "Recent logs:"
 foreach ($name in @("websocket", "kline", "dashboard", "api", "service", "web")) {

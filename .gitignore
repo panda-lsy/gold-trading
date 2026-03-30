@@ -39,6 +39,8 @@ logs/
 .service_pid
 .portal_pid
 .kline_pid
+.service_ports.json
+.service_ports.env
 
 # Local runtime data (generated)
 data/*_state.json
@@ -86,3 +88,4 @@ FINAL_SUBMISSION_CHECKLIST.md
 docs/
 inspiration_flow_dashboard_ai.ipynb
 skills/TEMPLATE.md
+web/runtime-config.js

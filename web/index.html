@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>JARVIS 统一工作台</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <style>
         :root {
             --bg: #0b1020;
@@ -41,12 +42,36 @@
             z-index: 100;
         }
         .nav-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
             font-size: 20px;
             font-weight: bold;
             color: #fff;
             background: linear-gradient(135deg, #4da8ff, #a842ff);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+        }
+        .brand-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #4da8ff, #17d5c2);
+            box-shadow: 0 0 18px rgba(54, 174, 255, 0.45);
+            position: relative;
+        }
+        .brand-icon::after {
+            content: "";
+            position: absolute;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            right: 3px;
+            top: 3px;
+            background: rgba(255, 255, 255, 0.85);
+        }
+        .brand-text {
+            letter-spacing: 0.4px;
         }
         .nav-tabs { display: flex; gap: 10px; }
         .tab-btn {
@@ -137,7 +162,7 @@
 </head>
 <body>
     <div class="navbar">
-        <div class="nav-brand">JARVIS</div>
+        <div class="nav-brand"><span class="brand-icon" aria-hidden="true"></span><span class="brand-text">JARVIS</span></div>
         <div class="nav-tabs">
             <button class="tab-btn active" onclick="switchTab('dashboard', this)">实时大盘</button>
             <button class="tab-btn" onclick="switchTab('ai', this)">AI 多场景中心</button>
@@ -287,6 +312,7 @@
         </div>
     </div>
 
+    <script src="./runtime-config.js"></script>
     <script>
         // Tab Switching Logic
         function switchTab(tabId, tabButton) {
@@ -300,8 +326,11 @@
 
         const HOST = window.location.hostname || '127.0.0.1';
         const PROTOCOL = window.location.protocol || 'http:';
-        const API = window.__API_BASE__ || `${PROTOCOL}//${HOST}:8080`;
-        const DASHBOARD_URL = window.__DASHBOARD_BASE__ || `${PROTOCOL}//${HOST}:5000`;
+        const params = new URLSearchParams(window.location.search);
+        const apiOverride = params.get('api_base') || window.__API_BASE__;
+        const dashboardOverride = params.get('dashboard_base') || window.__DASHBOARD_BASE__;
+        const API = apiOverride || `${PROTOCOL}//${HOST}:8080`;
+        const DASHBOARD_URL = dashboardOverride || `${PROTOCOL}//${HOST}:5000`;
         const DASHBOARD_EMBED_URL = `${DASHBOARD_URL}${DASHBOARD_URL.includes('?') ? '&' : '?'}embed=1`;
         const DASHBOARD_HEALTH_URL = `${DASHBOARD_URL}/api/health`;
 

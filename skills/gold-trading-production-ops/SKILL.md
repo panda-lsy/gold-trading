@@ -1,6 +1,6 @@
 ---
 name: gold-trading-production-ops
-description: 用于在 Windows 或 Linux/macOS 本地运行积存金生产应用并执行 AI 巡检。当用户需要：启动服务、检查 API/AI 能力、应用 OpenClaw 生产模板、生成行情快报图、定位常见启动故障时使用。
+description: 用于在 Windows 或 Linux/macOS 本地运行积存金生产应用并执行 AI 巡检。当用户需要：启动服务、动态端口分配、检查 API/AI 能力、应用 OpenClaw 生产模板、使用 cpolar 公网访问、定位常见启动故障时使用。
 ---
 
 # Gold Trading Production Ops Skill
@@ -8,7 +8,7 @@ description: 用于在 Windows 或 Linux/macOS 本地运行积存金生产应用
 ## Scope
 
 This skill is for production-style local operation on Windows and Linux/macOS.
-It focuses on service startup, API health checks, AI capability checks, and OpenClaw production template usage.
+It focuses on service startup, dynamic port fallback, API health checks, AI capability checks, public tunnel setup, and OpenClaw production template usage.
 
 ## Repository
 
@@ -47,16 +47,49 @@ For skill deployment, use this repository URL as the source when importing into 
 4. Start static portal only:
    - `./scripts/start_web.sh`
 
+## Dynamic Port Behavior
+
+1. All start scripts now prefer default ports and auto-fallback to free ports when occupied.
+2. Windows writes runtime ports to:
+   - `.service_ports.json`
+3. Linux/macOS writes runtime ports to:
+   - `.service_ports.env`
+4. Status scripts always show current effective endpoints.
+
+Windows quick check:
+
+`powershell -Command "Get-Content .service_ports.json"`
+
+Linux/macOS quick check:
+
+`cat .service_ports.env`
+
+Optional preferred ports before startup:
+
+- `WS_PORT`
+- `DASHBOARD_PORT`
+- `API_PORT`
+- `PORTAL_PORT`
+
 ## API Validation Checklist
 
-1. API health:
-   - `curl http://127.0.0.1:8080/api/health`
-2. Dashboard aggregate data:
-   - `curl http://127.0.0.1:8080/api/dashboard`
-3. AI capability status:
-   - `curl http://127.0.0.1:8080/api/ai/capabilities`
-4. Open AI Playground:
-   - `http://127.0.0.1:8090/ai_playground.html`
+1. Read actual API port from runtime metadata.
+2. API health:
+   - `curl http://127.0.0.1:${API_PORT}/api/health`
+3. Dashboard aggregate data:
+   - `curl http://127.0.0.1:${API_PORT}/api/dashboard`
+4. AI capability status:
+   - `curl http://127.0.0.1:${API_PORT}/api/ai/capabilities`
+5. Open AI Playground:
+   - `http://127.0.0.1:${PORTAL_PORT}/ai_playground.html`
+
+If you need shell variables on Linux/macOS:
+
+`source .service_ports.env`
+
+If you need shell variables on Windows PowerShell:
+
+`$p = Get-Content .service_ports.json | ConvertFrom-Json`
 
 ## OpenClaw Production Template
 
@@ -68,10 +101,39 @@ Expected template file:
 
 `config/openclaw_cron.production.json`
 
+## Public Access via cpolar
+
+Use this when Copaw workspace cannot directly expose localhost services.
+
+1. Create public tunnels for local API and Dashboard ports.
+2. Export public base URLs before startup:
+   - `PUBLIC_API_BASE`
+   - `PUBLIC_DASHBOARD_BASE`
+3. Start services with standard scripts.
+4. Verify generated runtime config:
+   - `web/runtime-config.js`
+5. Open portal and verify requests target public bases.
+
+Example (PowerShell):
+
+`$env:PUBLIC_API_BASE="https://xxx.cpolar.top"`
+
+`$env:PUBLIC_DASHBOARD_BASE="https://yyy.cpolar.top"`
+
+`powershell -ExecutionPolicy Bypass -File .\scripts\Start-All.ps1`
+
+Example (Linux/macOS):
+
+`export PUBLIC_API_BASE="https://xxx.cpolar.top"`
+
+`export PUBLIC_DASHBOARD_BASE="https://yyy.cpolar.top"`
+
+`./scripts/start_all.sh`
+
 ## Quick Troubleshooting
 
 1. Port conflict:
-   - Stop all and restart with scripts above.
+   - Scripts now auto-fallback to free ports. Confirm final ports in `.service_ports.json` or `.service_ports.env`.
 2. Python not found:
    - Install Python 3 and ensure executable is on PATH (`py/python` on Windows, `python3/python` on Linux/macOS).
 3. AI model dependency missing:
@@ -79,6 +141,9 @@ Expected template file:
    - Capability endpoint will show component readiness.
 4. Linux script execution denied:
    - Run `chmod +x ./scripts/*.sh` and retry.
+5. cpolar domain reachable but API fails:
+   - Verify `PUBLIC_API_BASE` and `PUBLIC_DASHBOARD_BASE` values before startup.
+   - Re-run start script to regenerate `web/runtime-config.js`.
 
 ## Copaw Space Demonstration Notes
 
