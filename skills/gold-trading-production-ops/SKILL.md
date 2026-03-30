@@ -1,6 +1,6 @@
 ---
 name: gold-trading-production-ops
-description: 用于在 Windows 或 Linux/macOS 本地运行积存金生产应用并执行 AI 巡检。当用户需要：启动服务、动态端口分配、检查 API/AI 能力、应用 OpenClaw 生产模板、使用 cpolar 公网访问、定位常见启动故障时使用。
+description: 用于在 Windows 或 Linux/macOS 本地运行积存金生产应用并执行 AI 巡检。当用户需要：启动服务、动态端口分配、导入 OpenClaw 定时任务、默认启用 cpolar 公网地址、检查 API/AI 能力、定位常见启动故障时使用。
 ---
 
 # Gold Trading Production Ops Skill
@@ -8,7 +8,7 @@ description: 用于在 Windows 或 Linux/macOS 本地运行积存金生产应用
 ## Scope
 
 This skill is for production-style local operation on Windows and Linux/macOS.
-It focuses on service startup, dynamic port fallback, API health checks, AI capability checks, public tunnel setup, and OpenClaw production template usage.
+It focuses on service startup, dynamic port fallback, OpenClaw scheduled-task import, default cpolar setup, API health checks, AI capability checks, and production template usage.
 
 ## Repository
 
@@ -101,12 +101,31 @@ Expected template file:
 
 `config/openclaw_cron.production.json`
 
+## Import Scheduled Tasks (Required)
+
+Use this section when user asks to import or initialize cron/scheduled tasks.
+
+1. Import production schedule template:
+   - `python ops/setup_openclaw.py --mode production --apply`
+2. Verify active schedule file exists:
+   - `openclaw_cron.json`
+3. Verify production template source file exists:
+   - `config/openclaw_cron.production.json`
+4. Optional quick inspect:
+   - `python -m json.tool openclaw_cron.json`
+
+If import fails:
+
+- Re-run command from repository root.
+- Ensure file write permission for project root.
+- Check JSON validity in `config/openclaw_cron.production.json`.
+
 ## Public Access via cpolar
 
 Use this when Copaw workspace cannot directly expose localhost services.
 
 1. Create public tunnels for local API and Dashboard ports.
-2. Export public base URLs before startup:
+2. Default cpolar mode: export public base URLs before startup:
    - `PUBLIC_API_BASE`
    - `PUBLIC_DASHBOARD_BASE`
 3. Start services with standard scripts.
@@ -129,6 +148,13 @@ Example (Linux/macOS):
 `export PUBLIC_DASHBOARD_BASE="https://yyy.cpolar.top"`
 
 `./scripts/start_all.sh`
+
+Recommended default behavior for this skill:
+
+1. Assume cpolar mode is enabled by default.
+2. If user has not provided domains, ask them to provide two cpolar URLs (API and Dashboard).
+3. Always write `PUBLIC_API_BASE` and `PUBLIC_DASHBOARD_BASE` before startup commands.
+4. Validate that `web/runtime-config.js` contains cpolar URLs after startup.
 
 ## Quick Troubleshooting
 
