@@ -1,0 +1,84 @@
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.conda/
+conda-meta/
+**/conda-meta/
+envs/
+*.conda
+
+# Build and packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test and tooling cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# Logs and runtime PID files
+logs/
+*.log
+*.pid
+.api_pid
+.web_pid
+.ws_pid
+.service_pid
+.portal_pid
+.kline_pid
+
+# Local runtime data (generated)
+data/*_state.json
+data/*_cache.json
+data/*_history.json
+data/*kline*.json
+data/ai_outputs/
+
+# Downloaded OpenVINO model artifacts
+models/
+Qwen3-TTS-0.6B-int4-ov/
+Qwen3-VL-4B-Instruct-int4-ov/
+Z-Image-Turbo-int4-ov/
+
+# Generated images and reports
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Archived historical files
+archieve/
+
+# Local baseline workspace clone
+modelscope-workshop/
+
+# Local skill runtime artifacts
+skills/**/artifacts/
+skills/**/runs/
+skills/**/.cache/
+skills/**/.copaw/
+
+# Documents
+FINAL_SUBMISSION_CHECKLIST.md
+docs/
+inspiration_flow_dashboard_ai.ipynb

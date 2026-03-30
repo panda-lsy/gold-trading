@@ -1,0 +1,55 @@
+{
+  "jobs": [
+    {
+      "name": "gold-hourly-check",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 * * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "payload": {
+        "kind": "agentTurn",
+        "message": "执行小时检查。参考命令: python ops/smart_monitor.py hourly。若有显著风险或机会，请发送摘要通知。",
+        "timeoutSeconds": 120
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "openclaw-weixin"
+      }
+    },
+    {
+      "name": "gold-price-alert",
+      "schedule": {
+        "kind": "cron",
+        "expr": "*/15 * * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "payload": {
+        "kind": "agentTurn",
+        "message": "执行价格波动预警检查。参考命令: python ops/smart_monitor.py alert。仅在触发阈值时发送通知。",
+        "timeoutSeconds": 90
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "openclaw-weixin"
+      }
+    },
+    {
+      "name": "gold-daily-report",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 21 * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "payload": {
+        "kind": "agentTurn",
+        "message": "生成并发送每日交易报告。参考命令: python ops/smart_monitor.py report。",
+        "timeoutSeconds": 180
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "openclaw-weixin"
+      }
+    }
+  ]
+}

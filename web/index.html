@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JARVIS 统一工作台</title>
+    <style>
+        :root {
+            --bg: #0b1020;
+            --panel: #121a2d;
+            --line: #243453;
+            --text: #e9effb;
+            --muted: #8ba0c8;
+            --ok: #27c46b;
+            --warn: #f1c40f;
+            --bad: #ef5350;
+            --accent: #4da8ff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(900px 450px at -10% 0%, #213662 0%, transparent 60%),
+                radial-gradient(800px 500px at 120% 20%, #1b3558 0%, transparent 60%),
+                var(--bg);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        /* Navbar */
+        .navbar {
+            display: flex;
+            padding: 14px 24px;
+            background: rgba(18, 26, 45, 0.8);
+            border-bottom: 1px solid var(--line);
+            gap: 30px;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+        .nav-brand {
+            font-size: 20px;
+            font-weight: bold;
+            color: #fff;
+            background: linear-gradient(135deg, #4da8ff, #a842ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .nav-tabs { display: flex; gap: 10px; }
+        .tab-btn {
+            background: transparent; border: none; color: var(--muted);
+            font-size: 15px; cursor: pointer; padding: 8px 18px;
+            border-radius: 8px; transition: all 0.2s;
+        }
+        .tab-btn.active {
+            background: rgba(47, 127, 243, 0.15);
+            color: var(--accent);
+            font-weight: 500;
+        }
+        .tab-btn:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+        }
+
+        .content { flex: 1; overflow: auto; }
+        .panel { display: none; padding: 24px; }
+        .panel.active { display: block; }
+        .wrap { max-width: 1200px; margin: 0 auto; }
+
+        /* General UI Elements */
+        h1 { margin: 0 0 8px; font-size: 24px; }
+        .hint { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+        .btn {
+            border: 1px solid var(--line); color: #fff;
+            background: linear-gradient(135deg, #2f7ff3, var(--accent));
+            border-radius: 10px; padding: 8px 14px; cursor: pointer; font-size: 13px;
+        }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn.warn { background: linear-gradient(135deg, #7d2fdb, #a842ff); }
+        .btn.sub { background: #152442; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+        .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+        .card h2 { margin: 0 0 14px; font-size: 16px; font-weight: 600; color: #fff; }
+        label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+        textarea, input[type="text"], input[type="file"] {
+            width: 100%; background: #0e1629; border: 1px solid var(--line);
+            border-radius: 8px; color: var(--text); padding: 10px; margin-bottom: 12px;
+        }
+        textarea { min-height: 90px; resize: vertical; }
+        .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        
+        /* Dashboard */
+        #panel-dashboard { padding: 16px; height: calc(100vh - 65px); }
+        .frame { width: 100%; height: 100%; border: 1px solid var(--line); border-radius: 12px; background: #0f1629; }
+        
+        /* AI Panel Elements */
+        .status-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px;
+            margin-bottom: 8px; font-size: 13px; background: #0e1424;
+        }
+        .badge { border-radius: 999px; padding: 4px 10px; font-size: 12px; border: 1px solid var(--line); }
+        .ok { color: var(--ok); }
+        .bad { color: var(--bad); }
+        .out {
+            margin-top: 10px; border: 1px dashed #38517f; border-radius: 8px;
+            padding: 12px; white-space: pre-wrap; line-height: 1.5; min-height: 56px;
+            font-size: 13px; color: #d9e6ff; background: rgba(8, 16, 34, 0.7);
+        }
+        .small { font-size: 12px; color: var(--muted); }
+        audio { width: 100%; margin-top: 10px; border-radius: 8px; }
+        a.link { color: #88c2ff; text-decoration: none; font-size: 13px; }
+        .chat-window {
+            height: 320px; overflow: auto; border: 1px solid var(--line);
+            border-radius: 8px; padding: 12px; background: #0f1830; margin-bottom: 12px;
+        }
+        .chat-item { margin-bottom: 12px; }
+        .role { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+        .bubble { background: rgba(255,255,255,0.05); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
+        .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+        .img-preview { width: 100%; border-radius: 8px; border: 1px solid var(--line); margin-top: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+
+        /* Ops Portal Items */
+        .ops-value { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+        .ops-status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; background: rgba(0,0,0,0.2); }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+        .ok-status .dot { background: var(--ok); }
+        .warn-status .dot { background: var(--warn); }
+        .bad-status .dot { background: var(--bad); }
+        .quick-link { display: inline-block; text-decoration: none; color: #fff; background: rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 8px; font-size: 13px; margin: 4px 4px 4px 0; border: 1px solid var(--line); transition: background 0.2s;}
+        .quick-link:hover { background: rgba(255,255,255,0.2); }
+        .mono { font-family: Consolas, monospace; font-size: 12px; color: #c8d7f7; line-height: 1.6; background: #0b1020; padding: 12px; border-radius: 8px; border: 1px solid var(--line); }
+
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <div class="nav-brand">JARVIS</div>
+        <div class="nav-tabs">
+            <button class="tab-btn active" onclick="switchTab('dashboard', this)">实时大盘</button>
+            <button class="tab-btn" onclick="switchTab('ai', this)">AI 多场景中心</button>
+            <button class="tab-btn" onclick="switchTab('ops', this)">系统监控与运维</button>
+        </div>
+    </div>
+
+    <div class="content">
+        <!-- Dashboard Panel -->
+        <div id="panel-dashboard" class="panel active">
+            <iframe id="dashboardFrame" class="frame" src="about:blank" title="Dashboard"></iframe>
+        </div>
+
+        <!-- AI Panel -->
+        <div id="panel-ai" class="panel">
+            <div class="wrap">
+                <h1>AI 多场景 Web Playground</h1>
+                <div class="hint">集成 VLM 图像理解、K线自动分析、语音识别对话、TTS 播报及行情快报生成服务</div>
+                
+                <div class="card" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h2 style="margin:0;">模型底层状态</h2>
+                        <button class="btn sub" onclick="loadCapabilities()">刷新服务状态</button>
+                    </div>
+                    <div id="caps">状态检查中...</div>
+                </div>
+
+                <div class="grid" style="margin-bottom: 16px;">
+                    <div class="card" style="grid-column: 1 / -1;">
+                        <h2>智能助理与语音聊天</h2>
+                        <div class="chat-window" id="chatWindow"></div>
+                        <div class="row">
+                            <input id="chatInput" type="text" placeholder="输入你想问的问题，例如：当前金价适合补仓吗？" style="flex:1; margin-bottom:0;" />
+                        </div>
+                        <div class="row" style="margin-top:12px;">
+                            <input id="chatImage" type="file" accept="image/*" style="width:200px; margin-bottom:0;" />
+                            <button class="btn" onclick="sendChat()">发送</button>
+                            <button class="btn warn" id="micBtn" onclick="toggleMic()">▶ 开始语音输入</button>
+                            <label class="toggle"><input type="checkbox" id="ttsToggle" checked /> 自动语音播报回复</label>
+                            <span class="small" id="micStatus" style="margin-left:auto;">麦克风当前未启动</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid">
+                    <div class="card">
+                        <h2>TTS 文本转语音</h2>
+                        <label>输入需要播报的文本</label>
+                        <textarea id="ttsText">你好，我是您的黄金投资 AI 助手，今天行情看起来不错。</textarea>
+                        <button class="btn" onclick="runTTS()">生成并播放</button>
+                        <div class="out" id="ttsOut">等待执行...</div>
+                        <audio id="ttsAudio" controls></audio>
+                    </div>
+
+                    <div class="card">
+                        <h2>ASR 语音识别</h2>
+                        <label>上传外部录音文件（wav/mp3）</label>
+                        <input id="asrFile" type="file" accept="audio/*" />
+                        <button class="btn" onclick="runASR()">执行识别作业</button>
+                        <div class="out" id="asrOut">等待执行...</div>
+                    </div>
+
+                    <div class="card">
+                        <h2>VLM 图像理解 / K线识别</h2>
+                        <label>上传图像（新闻截图或K线等）</label>
+                        <input id="vlmFile" type="file" accept="image/*" />
+                        <div class="row">
+                            <button class="btn" onclick="runVLMImage()">语义理解</button>
+                            <button class="btn sub" onclick="runVLMKline()">K线专项量化</button>
+                        </div>
+                        <div class="out" id="vlmImageOut">等待执行...</div>
+                    </div>
+
+                    <div class="card">
+                        <h2>VLM 宏观市场深度分析</h2>
+                        <div class="small" style="margin-bottom:8px;">服务端将自动抓取实时数据和资讯进行综合评估。</div>
+                        <div class="row">
+                            <button class="btn" onclick="runVLMMarket()">生成综合报告</button>
+                            <a class="link" id="apiDashboardRawLink" href="#" target="_blank" rel="noopener">查看原始 JSON</a>
+                        </div>
+                        <div class="out" id="vlmMarketOut">等待执行...</div>
+                    </div>
+
+                    <div class="card" style="grid-column: 1 / -1;">
+                        <h2>一键快报生成与分享</h2>
+                        <label>快报标题（可选自定义设置）</label>
+                        <div class="row">
+                            <input id="briefTitle" type="text" value="积存金核心行情快报" style="flex:1; margin-bottom:0;" />
+                            <button class="btn" onclick="generateBriefImage()">AI 合成海报</button>
+                            <a class="link" id="briefDownload" href="#" target="_blank" rel="noopener">在新标签页打开</a>
+                        </div>
+                        <div class="out" id="briefOut">等待执行...</div>
+                        <img id="briefImage" class="img-preview" style="display:none;" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ops Panel -->
+        <div id="panel-ops" class="panel">
+            <div class="wrap">
+                <h1>系统健康状态与运维指引</h1>
+                <div class="hint">生产与开发监控入口 (Auto-refresh)</div>
+                
+                <div class="grid" style="margin-bottom: 24px;">
+                    <div class="card">
+                        <h2>Dashboard 视图服务</h2>
+                        <div id="dashboardStatus" class="ops-status warn-status"><span class="dot"></span>Checking...</div>
+                        <div class="small" id="dashboardBaseText" style="margin-top: 10px;">--</div>
+                    </div>
+                    <div class="card">
+                        <h2>API 核心总线</h2>
+                        <div id="apiStatus" class="ops-status warn-status"><span class="dot"></span>Checking...</div>
+                        <div class="small" id="apiHealthText" style="margin-top: 10px;">--</div>
+                    </div>
+                    <div class="card">
+                        <h2>最后心跳时间</h2>
+                        <div id="lastCheck" class="ops-value">--</div>
+                        <div class="small">自动刷新间隔：10秒</div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-bottom: 24px;">
+                    <h2>快捷直达入口</h2>
+                    <a class="quick-link" id="quickDashboardLink" href="#" target="_blank" rel="noopener">独立开启大盘应用</a>
+                    <a class="quick-link" id="quickApiHealthLink" href="#" target="_blank" rel="noopener">获取 API Health 探测节点</a>
+                    <a class="quick-link" id="quickApiDashboardLink" href="#" target="_blank" rel="noopener">系统内部仪表盘原数据流</a>
+                </div>
+
+                <div class="card">
+                    <h2>常用服务器指令</h2>
+                    <div class="mono">
+                        # 开启全部后端<br/>
+                        ./scripts/start_all.sh<br/>
+                        <br/>
+                        # 监控所有进程状态<br/>
+                        ./scripts/status.sh<br/>
+                        <br/>
+                        # 关闭应用程序群<br/>
+                        ./scripts/stop_all.sh<br/>
+                        <br/>
+                        # 生产环境服务验证模式<br/>
+                        python ops/setup_openclaw.py --mode production --apply
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab Switching Logic
+        function switchTab(tabId, tabButton) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
+            if (tabButton) {
+                tabButton.classList.add('active');
+            }
+            document.getElementById('panel-' + tabId).classList.add('active');
+        }
+
+        const HOST = window.location.hostname || '127.0.0.1';
+        const PROTOCOL = window.location.protocol || 'http:';
+        const API = window.__API_BASE__ || `${PROTOCOL}//${HOST}:8080`;
+        const DASHBOARD_URL = window.__DASHBOARD_BASE__ || `${PROTOCOL}//${HOST}:5000`;
+        const DASHBOARD_EMBED_URL = `${DASHBOARD_URL}${DASHBOARD_URL.includes('?') ? '&' : '?'}embed=1`;
+        const DASHBOARD_HEALTH_URL = `${DASHBOARD_URL}/api/health`;
+
+        function initStaticUrls() {
+            const dashboardFrame = document.getElementById('dashboardFrame');
+            if (dashboardFrame) dashboardFrame.src = DASHBOARD_EMBED_URL;
+
+            const dashboardBaseText = document.getElementById('dashboardBaseText');
+            if (dashboardBaseText) dashboardBaseText.textContent = DASHBOARD_URL;
+
+            const apiHealthText = document.getElementById('apiHealthText');
+            if (apiHealthText) apiHealthText.textContent = `${API}/api/health`;
+
+            const quickDashboardLink = document.getElementById('quickDashboardLink');
+            if (quickDashboardLink) quickDashboardLink.href = DASHBOARD_URL;
+
+            const quickApiHealthLink = document.getElementById('quickApiHealthLink');
+            if (quickApiHealthLink) quickApiHealthLink.href = `${API}/api/health`;
+
+            const quickApiDashboardLink = document.getElementById('quickApiDashboardLink');
+            if (quickApiDashboardLink) quickApiDashboardLink.href = `${API}/api/dashboard`;
+
+            const apiDashboardRawLink = document.getElementById('apiDashboardRawLink');
+            if (apiDashboardRawLink) apiDashboardRawLink.href = `${API}/api/dashboard`;
+        }
+
+        // --- Ops Portal Scripts ---
+        async function checkUrl(url, timeoutMs = 2500) {
+            const c = new AbortController();
+            const t = setTimeout(() => c.abort(), timeoutMs);
+            try {
+                const r = await fetch(url, { signal: c.signal });
+                clearTimeout(t);
+                return r.ok;
+            } catch (_) {
+                clearTimeout(t);
+                return false;
+            }
+        }
+
+        function setStatus(el, ok, upText) {
+            if (ok) {
+                el.className = 'ops-status ok-status';
+                el.innerHTML = '<span class="dot"></span>' + upText;
+            } else {
+                el.className = 'ops-status bad-status';
+                el.innerHTML = '<span class="dot"></span>Unavailable / Offline';
+            }
+        }
+
+        async function refreshHealth() {
+            const dashEl = document.getElementById('dashboardStatus');
+            const apiEl = document.getElementById('apiStatus');
+            const timeEl = document.getElementById('lastCheck');
+
+            const [dashOk, apiOk] = await Promise.all([
+                checkUrl(DASHBOARD_HEALTH_URL),
+                checkUrl(`${API}/api/health`)
+            ]);
+
+            setStatus(dashEl, dashOk, 'Running & Healthy');
+            setStatus(apiEl, apiOk, 'Running & Healthy');
+            timeEl.textContent = new Date().toLocaleString('zh-CN');
+        }
+
+        initStaticUrls();
+        refreshHealth();
+        setInterval(refreshHealth, 10000);
+
+        // --- AI Playground Scripts ---
+        let recognition = null;
+        let listening = false;
+
+        function addChat(role, content) {
+            const box = document.getElementById('chatWindow');
+            const item = document.createElement('div');
+            item.className = 'chat-item';
+            const roleNode = document.createElement('div');
+            roleNode.className = 'role';
+            roleNode.textContent = String(role || '');
+
+            const bubbleNode = document.createElement('div');
+            bubbleNode.className = 'bubble';
+            bubbleNode.textContent = String(content || '');
+
+            item.appendChild(roleNode);
+            item.appendChild(bubbleNode);
+            box.appendChild(item);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function renderCaps(caps) {
+            const box = document.getElementById('caps');
+            if (!box) return;
+            const keys = ['asr', 'tts', 'vlm', 'image_generation'];
+            const labels = { asr: 'ASR', tts: 'TTS', vlm: 'VLM', image_generation: 'IMG' };
+            box.replaceChildren();
+
+            keys.forEach((k) => {
+                const item = caps[k] || {};
+                const ok = item.ready === true;
+
+                const row = document.createElement('div');
+                row.className = 'status-item';
+
+                const label = document.createElement('span');
+                label.textContent = labels[k] || k.toUpperCase();
+
+                const badge = document.createElement('span');
+                badge.className = `badge ${ok ? 'ok' : 'bad'}`;
+                badge.textContent = ok ? 'READY' : 'NOT READY';
+
+                row.appendChild(label);
+                row.appendChild(badge);
+
+                const msg = document.createElement('div');
+                msg.className = 'small';
+                msg.style.margin = '-4px 0 8px';
+                msg.textContent = item.message || '';
+
+                box.appendChild(row);
+                box.appendChild(msg);
+            });
+        }
+
+        async function loadCapabilities() {
+            const box = document.getElementById('caps');
+            if (box) box.textContent = '状态检查中...';
+            try {
+                const r = await fetch(`${API}/api/ai/capabilities`);
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || 'Server error');
+                renderCaps(d.capabilities || {});
+            } catch (e) {
+                if (box) {
+                    box.replaceChildren();
+                    const err = document.createElement('div');
+                    err.className = 'out';
+                    err.textContent = `拉取组件状态失败: ${e.message}。请检查 API 是否开启。`;
+                    box.appendChild(err);
+                }
+            }
+        }
+
+        async function speakText(text) {
+            const enabled = document.getElementById('ttsToggle').checked;
+            if (!enabled || !text) return;
+            try {
+                const r = await fetch(`${API}/api/ai/tts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                const d = await r.json();
+                if (!d.success) return;
+                const audio = new Audio(`${API}${d.audio_url}`);
+                audio.play().catch(() => {});
+            } catch (_) {}
+        }
+
+        async function sendChat() {
+            const input = document.getElementById('chatInput');
+            const imageInput = document.getElementById('chatImage');
+            const message = (input.value || '').trim();
+
+            if (!message && (!imageInput.files || imageInput.files.length === 0)) {
+                addChat('系统', '请输入对话内容或上传视觉图片');
+                return;
+            }
+
+            addChat('我', message || '[图片任务]');
+            input.value = '';
+
+            try {
+                let r;
+                if (imageInput.files && imageInput.files.length > 0) {
+                    const fd = new FormData();
+                    fd.append('message', message);
+                    fd.append('image', imageInput.files[0]);
+                    r = await fetch(`${API}/api/ai/chat`, { method: 'POST', body: fd });
+                    imageInput.value = '';
+                } else {
+                    r = await fetch(`${API}/api/ai/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message })
+                    });
+                }
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || 'Chat 接口报错');
+                addChat('JARVIS', d.reply || '(思考完毕，但无结果)');
+                if (d.image_url) {
+                    addChat('JARVIS', `为您附带快报图链接: ${API}${d.image_url}`);
+                }
+                await speakText(d.reply || '');
+            } catch (e) {
+                addChat('系统', `执行失败: ${e.message}`);
+            }
+        }
+
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                document.getElementById('micStatus').textContent = '【兼容警告】浏览器不支持原生语音识别';
+                document.getElementById('micBtn').disabled = true;
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'zh-CN';
+            recognition.interimResults = false;
+            recognition.continuous = false;
+
+            recognition.onstart = () => {
+                listening = true;
+                document.getElementById('micBtn').textContent = '⏹ 停止聆听';
+                document.getElementById('micStatus').textContent = '持续识别中... 请说话';
+            };
+
+            recognition.onend = () => {
+                listening = false;
+                document.getElementById('micBtn').textContent = '▶ 开始语音输入';
+                document.getElementById('micStatus').textContent = '麦克风进入休眠';
+            };
+
+            recognition.onerror = (event) => {
+                document.getElementById('micStatus').textContent = `麦克风出现报错: ${event.error}`;
+            };
+
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                document.getElementById('chatInput').value = text;
+                sendChat();
+            };
+        }
+
+        function toggleMic() {
+            if (!recognition) return;
+            if (listening) recognition.stop();
+            else recognition.start();
+        }
+
+        async function runTTS() {
+            const out = document.getElementById('ttsOut');
+            const audio = document.getElementById('ttsAudio');
+            out.textContent = '队列已创建，云端处理中...';
+            audio.src = '';
+            try {
+                const text = document.getElementById('ttsText').value || '';
+                const r = await fetch(`${API}/api/ai/tts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || 'TTS 推理抛出异常');
+                out.textContent = `生成成功，音频链接: ${d.audio_file}`;
+                audio.src = `${API}${d.audio_url}`;
+            } catch (e) {
+                out.textContent = `执行被中止: ${e.message}`;
+            }
+        }
+
+        async function runASR() {
+            const out = document.getElementById('asrOut');
+            const fileInput = document.getElementById('asrFile');
+            out.textContent = '读取音频流中...';
+            try {
+                if (!fileInput.files || fileInput.files.length === 0) {
+                    throw new Error('未检测到合法录音文件输入。');
+                }
+                const formData = new FormData();
+                formData.append('audio', fileInput.files[0]);
+                const r = await fetch(`${API}/api/ai/asr`, { method: 'POST', body: formData });
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || 'ASR 指令失败');
+                out.textContent = d.text || '(解码结果为空)';
+            } catch (e) {
+                out.textContent = `流程中断: ${e.message}`;
+            }
+        }
+
+        async function runVLMImage() {
+            await runVLMByEndpoint('/api/ai/vlm/image', 'vlmImageOut');
+        }
+
+        async function runVLMKline() {
+            await runVLMByEndpoint('/api/ai/vlm/kline', 'vlmImageOut');
+        }
+
+        async function runVLMByEndpoint(endpoint, outputId) {
+            const out = document.getElementById(outputId);
+            const fileInput = document.getElementById('vlmFile');
+            out.textContent = '分析特征图谱中...';
+            try {
+                if (!fileInput.files || fileInput.files.length === 0) {
+                    throw new Error('缺失图像数据源。');
+                }
+                const formData = new FormData();
+                formData.append('image', fileInput.files[0]);
+                const r = await fetch(`${API}${endpoint}`, { method: 'POST', body: formData });
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || '多模态视觉管道异常');
+                out.textContent = d.result || '(该图片无明显可提取特征)';
+                await speakText(d.result || '');
+            } catch (e) {
+                out.textContent = `VLM 操作被阻断: ${e.message}`;
+            }
+        }
+
+        async function runVLMMarket() {
+            const out = document.getElementById('vlmMarketOut');
+            out.textContent = '综合计算宏观数据中...';
+            try {
+                const r = await fetch(`${API}/api/ai/vlm/market`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || '无法完成市场聚合计算');
+                out.textContent = d.result || '(运算未产生结果)';
+                await speakText(d.result || '');
+            } catch (e) {
+                out.textContent = `计算中断: ${e.message}`;
+            }
+        }
+
+        async function generateBriefImage() {
+            const out = document.getElementById('briefOut');
+            const img = document.getElementById('briefImage');
+            const link = document.getElementById('briefDownload');
+            out.textContent = '调用渲染层生成像素...';
+            img.style.display = 'none';
+            try {
+                const title = document.getElementById('briefTitle').value || '积存金核心行情快报';
+                const r = await fetch(`${API}/api/ai/image/brief`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title })
+                });
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || '图像写入阶段抛出致命异常');
+
+                const url = `${API}${d.image_url}`;
+                out.textContent = `出图结果正常: ${d.image_file}\n${(d.news_lines || []).join('\n')}`;
+                img.src = url;
+                img.style.display = 'block';
+                link.href = url;
+                link.textContent = '查看原图 (1080p)';
+            } catch (e) {
+                out.textContent = `生成序列终止: ${e.message}`;
+            }
+        }
+
+        // Initialize Chat
+        addChat('JARVIS', '您好，这里是 JARVIS 全能大模型终端。支持文字指令、图像识别、以及实时语音对话。试试对我按下【开始语音输入】吧！');
+        initSpeechRecognition();
+        
+        // Wait briefly for DOM to exist before calling this via a small delay or directly
+        setTimeout(() => {
+            loadCapabilities();
+        }, 300);
+
+    </script>
+</body>
+</html>
