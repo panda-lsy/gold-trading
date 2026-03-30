@@ -46,6 +46,9 @@ data/*_cache.json
 data/*_history.json
 data/*kline*.json
 data/ai_outputs/
+data/*.db
+data/*.db-wal
+data/*.db-shm
 
 # Downloaded OpenVINO model artifacts
 models/
