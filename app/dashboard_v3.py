@@ -474,8 +474,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (!tag) return;
             const labels = { asr: 'ASR', tts: 'TTS', vlm: 'VLM', image_generation: 'IMG' };
             const ok = ready === true;
-            tag.className = 'model-tag ' + (ok ? 'tag-ready' : 'tag-down');
-            tag.textContent = `${labels[key] || key.toUpperCase()}: ${ok ? '就绪' : '异常'}`;
+            const msg = String(message || '').toLowerCase();
+            const loading = !ok && (msg.includes('not loaded') || msg.includes('加载中') || msg.includes('loading'));
+            tag.className = 'model-tag ' + (ok ? 'tag-ready' : (loading ? 'tag-loading' : 'tag-down'));
+            tag.textContent = `${labels[key] || key.toUpperCase()}: ${ok ? '就绪' : (loading ? '加载中' : '异常')}`;
             if (message) tag.title = String(message);
             else tag.removeAttribute('title');
         }
@@ -528,7 +530,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         async function loadCapabilities() {
             setAllModelTagsLoading();
             try {
-                const r = await fetch(`${API}/api/ai/capabilities`);
+                const r = await fetch(`${API}/api/ai/capabilities?fast=1`);
                 const d = await r.json();
                 if (!d.success) throw new Error(d.error || 'unknown error');
                 renderCaps(d.capabilities || {});
@@ -956,8 +958,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     return `${wsProto}//${window.location.host}${WS_BASE}`;
                 }
             }
+            const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            if (REMOTE_PAGE) {
+                return `${wsProto}//${window.location.host}/ws`;
+            }
             if (isLikelyGatewayPort) {
-                const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 return `${wsProto}//${window.location.host}/ws`;
             }
             return 'ws://' + window.location.hostname + ':8765';

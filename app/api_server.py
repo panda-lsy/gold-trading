@@ -81,7 +81,7 @@ class AIInterfaceBridge:
         except Exception as e:
             return None, f'{model_name} 加载失败: {e}'
 
-    def get_capabilities(self):
+    def get_capabilities(self, eager_load: bool = True):
         status = {
             'asr': {'ready': False, 'message': 'not loaded'},
             'tts': {'ready': False, 'message': 'not loaded'},
@@ -89,42 +89,48 @@ class AIInterfaceBridge:
             'image_generation': {'ready': False, 'message': 'not loaded'},
         }
 
-        from ai_interface import Qwen3ASR, Qwen3TTS, Qwen3VLAnalyzer, MarketImageGenerator
+        if eager_load:
+            from ai_interface import Qwen3ASR, Qwen3TTS, Qwen3VLAnalyzer, MarketImageGenerator
 
-        asr_err = None
-        if self.asr is None:
-            self.asr, asr_err = self._safe_load(Qwen3ASR, 'ASR')
-        status['asr']['ready'] = self.asr is not None and getattr(self.asr, 'model', None) is not None
-        status['asr']['message'] = 'ready' if status['asr']['ready'] else (asr_err or 'ASR 模型未成功加载，请检查模型目录和依赖')
+            asr_err = None
+            if self.asr is None:
+                self.asr, asr_err = self._safe_load(Qwen3ASR, 'ASR')
+            status['asr']['ready'] = self.asr is not None and getattr(self.asr, 'model', None) is not None
+            status['asr']['message'] = 'ready' if status['asr']['ready'] else (asr_err or 'ASR 模型未成功加载，请检查模型目录和依赖')
 
-        tts_err = None
-        if self.tts is None:
-            self.tts, tts_err = self._safe_load(Qwen3TTS, 'TTS')
-        status['tts']['ready'] = self.tts is not None and getattr(self.tts, 'model', None) is not None
-        status['tts']['message'] = 'ready' if status['tts']['ready'] else (tts_err or 'TTS 模型未成功加载，请检查模型目录和依赖')
+            tts_err = None
+            if self.tts is None:
+                self.tts, tts_err = self._safe_load(Qwen3TTS, 'TTS')
+            status['tts']['ready'] = self.tts is not None and getattr(self.tts, 'model', None) is not None
+            status['tts']['message'] = 'ready' if status['tts']['ready'] else (tts_err or 'TTS 模型未成功加载，请检查模型目录和依赖')
 
-        vlm_err = None
-        if self.vlm is None:
-            self.vlm, vlm_err = self._safe_load(Qwen3VLAnalyzer, 'VLM')
-        status['vlm']['ready'] = self.vlm is not None and getattr(self.vlm, 'model', None) is not None
-        if status['vlm']['ready'] and getattr(self.vlm, 'backend', None) == 'fallback':
-            reason = getattr(self.vlm, 'fallback_reason', '')
-            status['vlm']['message'] = f'规则分析模式可用（原生VLM后端受限: {reason}）'
-        else:
-            status['vlm']['message'] = 'ready' if status['vlm']['ready'] else (vlm_err or 'VLM 模型未成功加载，请检查模型目录和依赖')
-
-        if self.image_generator is None:
-            try:
-                self.image_generator = MarketImageGenerator(output_dir=str(AI_OUTPUT_DIR))
-            except Exception as e:
-                status['image_generation']['message'] = f'image generation init failed: {e}'
-        status['image_generation']['ready'] = self.image_generator is not None
-        if status['image_generation']['ready']:
-            if self.image_generator.pipeline is not None:
-                mode = 'OpenVINO' if getattr(self.image_generator, '_use_openvino', False) else 'Diffusers'
-                status['image_generation']['message'] = f'{mode} 文生图可用'
+            vlm_err = None
+            if self.vlm is None:
+                self.vlm, vlm_err = self._safe_load(Qwen3VLAnalyzer, 'VLM')
+            status['vlm']['ready'] = self.vlm is not None and getattr(self.vlm, 'model', None) is not None
+            if status['vlm']['ready'] and getattr(self.vlm, 'backend', None) == 'fallback':
+                reason = getattr(self.vlm, 'fallback_reason', '')
+                status['vlm']['message'] = f'规则分析模式可用（原生VLM后端受限: {reason}）'
             else:
-                status['image_generation']['message'] = '模板渲染模式可用'
+                status['vlm']['message'] = 'ready' if status['vlm']['ready'] else (vlm_err or 'VLM 模型未成功加载，请检查模型目录和依赖')
+
+            if self.image_generator is None:
+                try:
+                    self.image_generator = MarketImageGenerator(output_dir=str(AI_OUTPUT_DIR))
+                except Exception as e:
+                    status['image_generation']['message'] = f'image generation init failed: {e}'
+            status['image_generation']['ready'] = self.image_generator is not None
+            if status['image_generation']['ready']:
+                if self.image_generator.pipeline is not None:
+                    mode = 'OpenVINO' if getattr(self.image_generator, '_use_openvino', False) else 'Diffusers'
+                    status['image_generation']['message'] = f'{mode} 文生图可用'
+                else:
+                    status['image_generation']['message'] = '模板渲染模式可用'
+        else:
+            status['asr']['message'] = 'not loaded'
+            status['tts']['message'] = 'not loaded'
+            status['vlm']['message'] = 'not loaded'
+            status['image_generation']['message'] = 'not loaded'
 
         return status
 
@@ -623,6 +629,47 @@ class APIServer:
             lines.append('最近交易: 暂无新成交记录')
 
         return '\n'.join(lines)
+
+    def _build_dashboard_snapshot(self) -> Dict:
+        data = {
+            'timestamp': datetime.now().isoformat(),
+            'prices': {},
+            'positions': {},
+            'trades': [],
+            'stats': self.trade_manager.get_trade_stats(),
+        }
+
+        for bank, trader in self.traders.items():
+            self.kline_service.record_price(bank)
+            quote = trader.get_quote()
+            if quote:
+                data['prices'][bank] = {
+                    'bank': bank,
+                    'name': quote['name'],
+                    'price': quote['price'],
+                    'yesterday_price': quote['yesterday_price'],
+                    'change_amt': quote['change_amt'],
+                    'change_rate': quote['change_rate'],
+                    'datetime': quote['datetime'],
+                    'is_trading': trader.is_trading_time(),
+                }
+            data['positions'][bank] = trader.get_summary()
+
+        trades = self.trade_manager.get_all_trades()
+        trades.reverse()
+        for trade in trades[:20]:
+            data['trades'].append({
+                'time': trade.time,
+                'action': trade.action,
+                'bank': trade.bank,
+                'price': trade.price,
+                'grams': trade.grams,
+                'cost': trade.cost,
+                'fee': trade.fee,
+                'profit': trade.profit,
+            })
+
+        return data
     
     def _setup_routes(self):
         """设置路由"""
@@ -635,6 +682,11 @@ class APIServer:
                 'timestamp': datetime.now().isoformat(),
                 'version': '2.0'
             })
+
+        @self.app.route('/api/data')
+        @self.app.route('/api/dashboard')
+        def get_dashboard_data():
+            return jsonify(self._build_dashboard_snapshot())
         
         # ========== 价格相关 ==========
         @self.app.route('/api/prices')
@@ -1131,7 +1183,8 @@ class APIServer:
         def get_ai_capabilities():
             """获取 AI 能力加载状态。"""
             try:
-                caps = self.ai_bridge.get_capabilities()
+                eager_load = request.args.get('fast', '1').lower() not in {'1', 'true', 'yes', 'on'}
+                caps = self.ai_bridge.get_capabilities(eager_load=eager_load)
                 return jsonify({'success': True, 'capabilities': caps})
             except Exception as e:
                 return jsonify({'success': False, 'error': str(e)}), 500
