@@ -13,7 +13,10 @@ import asyncio
 from typing import Dict, Optional
 from urllib.parse import urljoin
 
-from aiohttp import ClientSession, WSMsgType, web
+from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
+
+# 增加超时设置，避免 AI 模型加载导致超时
+DEFAULT_TIMEOUT = ClientTimeout(total=60, connect=10, sock_read=30)
 
 HOP_HEADERS = {
     "connection",
@@ -57,7 +60,7 @@ class SinglePortGateway:
         self.client: Optional[ClientSession] = None
 
     async def startup(self, app: web.Application):
-        self.client = ClientSession()
+        self.client = ClientSession(timeout=DEFAULT_TIMEOUT)
 
     async def cleanup(self, app: web.Application):
         if self.client:
