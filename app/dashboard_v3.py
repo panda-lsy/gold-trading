@@ -349,9 +349,27 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const PORT = window.location.port || (PROTOCOL === 'https:' ? '443' : '80');
         const CURRENT_ORIGIN = `${PROTOCOL}//${HOST}${window.location.port ? ':' + window.location.port : ''}`;
         const isLikelyGatewayPort = !/^5[0-9]{3}$/.test(PORT);
-        const API = window.__API_BASE__ || (isLikelyGatewayPort ? CURRENT_ORIGIN : `${PROTOCOL}//${HOST}:8080`);
-        const WS_BASE = window.__WS_BASE__ || '';
         const URL_PARAMS = new URLSearchParams(window.location.search);
+        const QUERY_API_BASE = (URL_PARAMS.get('api_base') || '').trim();
+        const QUERY_WS_BASE = (URL_PARAMS.get('ws_base') || '').trim();
+
+        function isLoopbackUrl(raw) {
+            if (!raw) return false;
+            try {
+                const u = new URL(raw, CURRENT_ORIGIN);
+                return u.hostname === '127.0.0.1' || u.hostname === 'localhost';
+            } catch (_) {
+                return false;
+            }
+        }
+
+        const CONFIG_API_BASE = (window.__API_BASE__ || '').trim();
+        const REMOTE_PAGE = !(HOST === '127.0.0.1' || HOST === 'localhost');
+        const SHOULD_IGNORE_CONFIG_API = REMOTE_PAGE && isLoopbackUrl(CONFIG_API_BASE);
+        const API = QUERY_API_BASE || (!SHOULD_IGNORE_CONFIG_API && CONFIG_API_BASE) || (isLikelyGatewayPort ? CURRENT_ORIGIN : `${PROTOCOL}//${HOST}:8080`);
+
+        const CONFIG_WS_BASE = (window.__WS_BASE__ || '').trim();
+        const WS_BASE = QUERY_WS_BASE || CONFIG_WS_BASE;
         const DISABLE_AI_SIDEBAR = URL_PARAMS.get('embed') === '1' || URL_PARAMS.get('hide_ai') === '1';
         let recognition = null;
         let listening = false;
