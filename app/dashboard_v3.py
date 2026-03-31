@@ -346,7 +346,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         let charts = {};
         const HOST = window.location.hostname || '127.0.0.1';
         const PROTOCOL = window.location.protocol || 'http:';
-        const API = window.__API_BASE__ || `${PROTOCOL}//${HOST}:8080`;
+        const PORT = window.location.port || (PROTOCOL === 'https:' ? '443' : '80');
+        const CURRENT_ORIGIN = `${PROTOCOL}//${HOST}${window.location.port ? ':' + window.location.port : ''}`;
+        const isLikelyGatewayPort = !/^5[0-9]{3}$/.test(PORT);
+        const API = window.__API_BASE__ || (isLikelyGatewayPort ? CURRENT_ORIGIN : `${PROTOCOL}//${HOST}:8080`);
+        const WS_BASE = window.__WS_BASE__ || '';
         const URL_PARAMS = new URLSearchParams(window.location.search);
         const DISABLE_AI_SIDEBAR = URL_PARAMS.get('embed') === '1' || URL_PARAMS.get('hide_ai') === '1';
         let recognition = null;
@@ -924,8 +928,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             statusDiv.innerHTML = '<span>●</span> ' + (connected ? '实时推送中' : '未连接');
         }
         
+        function buildWebSocketUrl() {
+            if (WS_BASE) {
+                if (WS_BASE.startsWith('ws://') || WS_BASE.startsWith('wss://')) {
+                    return WS_BASE;
+                }
+                if (WS_BASE.startsWith('/')) {
+                    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    return `${wsProto}//${window.location.host}${WS_BASE}`;
+                }
+            }
+            if (isLikelyGatewayPort) {
+                const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                return `${wsProto}//${window.location.host}/ws`;
+            }
+            return 'ws://' + window.location.hostname + ':8765';
+        }
+
         function connectWebSocket() {
-            const wsUrl = 'ws://' + window.location.hostname + ':8765';
+            const wsUrl = buildWebSocketUrl();
             ws = new WebSocket(wsUrl);
             
             ws.onopen = () => { updateStatus(true); };

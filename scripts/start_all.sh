@@ -89,7 +89,7 @@ echo "=========================================="
 # 检查依赖
 echo "检查依赖..."
 if [ -n "$PIP_CMD" ]; then
-	$PIP_CMD install flask flask-cors websockets -q 2>/dev/null || true
+	$PIP_CMD install flask flask-cors websockets aiohttp -q 2>/dev/null || true
 else
 	echo "  ! 未找到 pip，跳过依赖自动安装"
 fi

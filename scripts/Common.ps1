@@ -288,7 +288,7 @@ function Install-CoreDependencies {
     $launcher = Get-PythonLauncher
     $pipInstallParameters = @()
     $pipInstallParameters += $launcher.Prefix
-    $pipInstallParameters += @("-m", "pip", "install", "flask", "flask-cors", "websockets")
+    $pipInstallParameters += @("-m", "pip", "install", "flask", "flask-cors", "websockets", "aiohttp")
 
     try {
         & $launcher.Exe @pipInstallParameters | Out-Null
