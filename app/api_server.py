@@ -1152,32 +1152,6 @@ class APIServer:
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
         
-        # ========== 综合数据 ==========
-        @self.app.route('/api/dashboard')
-        def get_dashboard_data():
-            """获取 Dashboard 综合数据"""
-            data = {
-                'timestamp': datetime.now().isoformat(),
-                'prices': {},
-                'positions': {},
-                'stats': self.trade_manager.get_trade_stats()
-            }
-            
-            for bank in ['zheshang', 'minsheng']:
-                # 价格
-                quote = self.traders[bank].get_quote()
-                if quote:
-                    data['prices'][bank] = {
-                        'price': quote['price'],
-                        'change_rate': quote['change_rate'],
-                        'is_trading': self.traders[bank].is_trading_time()
-                    }
-                
-                # 持仓
-                data['positions'][bank] = self.traders[bank].get_summary()
-            
-            return jsonify(data)
-
         # ========== AI 多场景 ==========
         @self.app.route('/api/ai/capabilities')
         def get_ai_capabilities():
