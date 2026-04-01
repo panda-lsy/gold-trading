@@ -59,10 +59,12 @@ Show-ServiceStatus -Name "Service" -PidFile (Join-Path $projectRoot ".service_pi
 Show-ServiceStatus -Name "Portal" -PidFile (Join-Path $projectRoot ".portal_pid") -Port ([int]$ports.portal)
 
 Write-Host "URLs:"
-Write-Host "  Dashboard: http://127.0.0.1:$($ports.dashboard)"
+Write-Host "  Dashboard (chart only): http://127.0.0.1:$($ports.dashboard)"
 Write-Host "  API:       http://127.0.0.1:$($ports.api)"
 Write-Host "  WebSocket: ws://127.0.0.1:$($ports.websocket)"
-Write-Host "  Portal:    http://127.0.0.1:$($ports.portal)"
+Write-Host "  Portal (full workspace): http://127.0.0.1:$($ports.portal)"
+Write-Host ""
+Write-Host "Tip: Open the Portal URL to access all tabs (Dashboard + AI + Ops)."
 Write-Host ""
 
 Write-Host "Recent logs:"

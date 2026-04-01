@@ -12,10 +12,15 @@ import time
 import logging
 import uuid
 import traceback
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List
-from flask import Flask, jsonify, request, send_file, g
+from html import unescape
+from urllib.parse import quote_plus
+from urllib.request import Request, urlopen
+import xml.etree.ElementTree as ET
+from flask import Flask, Response, jsonify, request, send_file, stream_with_context, g
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
@@ -71,6 +76,8 @@ class AIInterfaceBridge:
         self.tts = None
         self.vlm = None
         self.image_generator = None
+        self._tts_cancel_events = {}
+        self._tts_cancel_lock = threading.Lock()
 
     def _safe_load(self, loader, model_name: str):
         try:
@@ -127,14 +134,14 @@ class AIInterfaceBridge:
                 else:
                     status['image_generation']['message'] = '模板渲染模式可用'
         else:
-            status['asr']['message'] = 'not loaded'
-            status['tts']['message'] = 'not loaded'
-            status['vlm']['message'] = 'not loaded'
-            status['image_generation']['message'] = 'not loaded'
+            status['asr']['message'] = '未加载（快速检测）'
+            status['tts']['message'] = '未加载（快速检测）'
+            status['vlm']['message'] = '未加载（快速检测）'
+            status['image_generation']['message'] = '未加载（快速检测）'
 
         return status
 
-    def tts_synthesize(self, text: str):
+    def tts_synthesize(self, text: str, fast_mode: bool = False, request_id: str = ''):
         if not text.strip():
             return None, 'text 不能为空'
 
@@ -144,12 +151,44 @@ class AIInterfaceBridge:
             if err:
                 return None, err
 
-        output_name = f"tts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+        req_id = str(request_id or uuid.uuid4().hex)
+        cancel_event = threading.Event()
+        with self._tts_cancel_lock:
+            self._tts_cancel_events[req_id] = cancel_event
+
+        output_name = f"tts_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:6]}.wav"
         output_path = AI_OUTPUT_DIR / output_name
-        result = self.tts.synthesize(text=text, output_file=str(output_path))
-        if not result or not output_path.exists():
-            return None, 'TTS 合成失败，请检查模型和依赖'
-        return output_name, None
+        try:
+            result = self.tts.synthesize(
+                text=text,
+                output_file=str(output_path),
+                fast_mode=fast_mode,
+                should_cancel=cancel_event.is_set,
+            )
+            if cancel_event.is_set():
+                if output_path.exists():
+                    try:
+                        output_path.unlink()
+                    except OSError:
+                        pass
+                return None, 'TTS 已取消'
+            if not result or not output_path.exists():
+                return None, 'TTS 合成失败，请检查模型和依赖'
+            return output_name, None
+        finally:
+            with self._tts_cancel_lock:
+                self._tts_cancel_events.pop(req_id, None)
+
+    def cancel_tts(self, request_id: str):
+        rid = str(request_id or '').strip()
+        if not rid:
+            return False
+        with self._tts_cancel_lock:
+            event = self._tts_cancel_events.get(rid)
+        if event is None:
+            return False
+        event.set()
+        return True
 
     def asr_recognize(self, audio_file_path: str):
         if self.asr is None:
@@ -175,6 +214,8 @@ class AIInterfaceBridge:
             return None, '图片文件不存在'
 
         result = self.vlm.analyze_kline(image_file_path)
+        if isinstance(result, str) and result.strip().startswith('分析失败'):
+            return None, result
         return result, None
 
     def vlm_analyze_kline(self, image_file_path: str):
@@ -190,6 +231,35 @@ class AIInterfaceBridge:
 
         result = self.vlm.analyze_market(payload)
         return result, None
+
+    def vlm_analyze_image_stream(self, image_file_path: str):
+        if self.vlm is None:
+            from ai_interface import Qwen3VLAnalyzer
+            self.vlm, err = self._safe_load(Qwen3VLAnalyzer, 'VLM')
+            if err:
+                return None, err
+
+        if not image_file_path or not Path(image_file_path).exists():
+            return None, '图片文件不存在'
+
+        try:
+            stream = self.vlm.analyze_kline_stream(image_file_path)
+            return stream, None
+        except Exception as e:
+            return None, f'图片流式分析失败: {e}'
+
+    def vlm_analyze_market_stream(self, payload: dict):
+        if self.vlm is None:
+            from ai_interface import Qwen3VLAnalyzer
+            self.vlm, err = self._safe_load(Qwen3VLAnalyzer, 'VLM')
+            if err:
+                return None, err
+
+        try:
+            stream = self.vlm.analyze_market_stream(payload)
+            return stream, None
+        except Exception as e:
+            return None, f'行情流式分析失败: {e}'
 
     def generate_market_brief_image(self, market_data: Dict, news_lines: List[str], title: str = '积存金行情快报'):
         if self.image_generator is None:
@@ -227,6 +297,8 @@ class APIServer:
         self.openclaw = self._init_openclaw()
         self._kline_recorder_started = False
         self.enable_internal_kline_recorder = os.getenv('ENABLE_INTERNAL_KLINE_RECORDER', '1') == '1'
+        self._brief_news_cache = {'ts': 0.0, 'lines': []}
+        self._brief_news_cache_lock = threading.Lock()
         
         # 注册预警回调
         self.alert_service.register_callback(AlertNotifier.console_notify)
@@ -337,6 +409,10 @@ class APIServer:
         if details:
             payload['details'] = details
         return jsonify(payload), http_status
+
+    def _sse_event(self, event: str, data: dict):
+        payload = json.dumps(data, ensure_ascii=False)
+        return f"event: {event}\ndata: {payload}\n\n"
 
     def _normalize_error_response(self, response):
         if response.status_code < 400:
@@ -499,7 +575,137 @@ class APIServer:
             }
         return payload
 
-    def _build_market_news(self, payload: Dict) -> List[str]:
+    def _fetch_text_url(self, url: str, timeout: int = 6) -> str:
+        req = Request(
+            url,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Safari/537.36',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            },
+        )
+        with urlopen(req, timeout=timeout) as resp:
+            content_type = resp.headers.get('Content-Type', '')
+            charset = 'utf-8'
+            if 'charset=' in content_type:
+                charset = content_type.split('charset=')[-1].split(';')[0].strip() or 'utf-8'
+            raw = resp.read()
+        return raw.decode(charset, errors='replace')
+
+    def _normalize_news_line(self, text: str) -> str:
+        cleaned = re.sub(r'<[^>]+>', ' ', str(text or ''))
+        cleaned = unescape(cleaned)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip(' \t\r\n-_|，,。；;')
+        cleaned = cleaned.replace('金十数据', '').replace('金十', '').strip()
+        return cleaned
+
+    def _fetch_jin10_precious_news(self, limit: int = 6) -> List[str]:
+        lines = []
+        seen = set()
+
+        def _decode_js_escaped(value: str) -> str:
+            raw = str(value or '')
+            if '\\u' in raw:
+                raw = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), raw)
+            raw = raw.replace('\\/', '/').replace('\\"', '"').replace('\\n', ' ')
+            return raw
+
+        # 1) 优先抓取 jin10 主站“市场快讯-分类”里的 flash 详情链接，可覆盖 APP 快讯句式。
+        try:
+            main_html = self._fetch_text_url('https://www.jin10.com/zh/', timeout=8)
+            flash_links = list(dict.fromkeys(re.findall(r'https://flash\.jin10\.com/detail/\d+', main_html)))
+
+            for link in flash_links[:24]:
+                try:
+                    detail_html = self._fetch_text_url(link, timeout=5)
+
+                    content_match = re.search(r'content:"(.*?)",source_link', detail_html, flags=re.S)
+                    if not content_match:
+                        continue
+                    content = _decode_js_escaped(content_match.group(1))
+                    content = self._normalize_news_line(content)
+                    content = re.sub(r'^【[^】]*】', '', content).strip()
+
+                    if len(content) < 10:
+                        continue
+
+                    # 仅保留贵金属价讯，避免默认分类中的地缘/政治噪声。
+                    precious_pattern = r'(黄金|白银|现货金|现货银|期金|期银|金价|银价|盎司|XAU|XAG|沪金|沪银)'
+                    if not re.search(precious_pattern, content, flags=re.I):
+                        continue
+
+                    if len(content) > 88:
+                        content = content[:88]
+
+                    key = content[:80]
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    lines.append(f'金十贵金属: {content}（{link}）')
+                    if len(lines) >= limit:
+                        return lines
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.warning('金十 flash 主站解析失败: %s', e)
+        return lines
+
+    def _fetch_web_precious_news(self, limit: int = 4) -> List[str]:
+        query = quote_plus('贵金属 黄金 白银 市场快讯')
+        rss_url = f'https://www.bing.com/news/search?q={query}&setlang=zh-cn&format=RSS'
+        rss = self._fetch_text_url(rss_url, timeout=6)
+        root = ET.fromstring(rss)
+
+        lines = []
+        seen = set()
+        for item in root.findall('.//item'):
+            title = (item.findtext('title') or '').strip()
+            if not title:
+                continue
+            normalized = self._normalize_news_line(title)
+            if len(normalized) < 8:
+                continue
+            key = normalized[:80]
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(f'联网快讯: {normalized[:120]}')
+            if len(lines) >= limit:
+                break
+        return lines
+
+    def _get_external_market_news(self, limit: int = 8) -> List[str]:
+        now = time.time()
+        with self._brief_news_cache_lock:
+            cached_ts = float(self._brief_news_cache.get('ts') or 0.0)
+            cached_lines = list(self._brief_news_cache.get('lines') or [])
+            if cached_lines and (now - cached_ts) < 180:
+                return cached_lines[:limit]
+
+        collected = []
+        try:
+            collected.extend(self._fetch_jin10_precious_news(limit=max(4, limit)))
+        except Exception as e:
+            logger.warning('抓取金十分类快讯失败: %s', e)
+
+        dedup = []
+        seen = set()
+        for line in collected:
+            norm = self._normalize_news_line(line)
+            if not norm:
+                continue
+            key = norm[:80]
+            if key in seen:
+                continue
+            seen.add(key)
+            dedup.append(line)
+            if len(dedup) >= limit:
+                break
+
+        with self._brief_news_cache_lock:
+            self._brief_news_cache = {'ts': now, 'lines': dedup}
+        return dedup
+
+    def _build_market_news(self, payload: Dict, include_external: bool = True) -> List[str]:
         lines = []
         for bank, info in payload.items():
             name = '浙商积存金' if bank == 'zheshang' else '民生积存金'
@@ -515,6 +721,11 @@ class APIServer:
                     lines.append(f'{name} 波动下行，建议控制仓位')
             except ValueError:
                 pass
+
+        if include_external:
+            external = self._get_external_market_news(limit=8)
+            if external:
+                lines.extend(external[:5])
 
         lines.append('国际贵金属市场受宏观数据预期影响，波动可能放大')
         lines.append('建议结合 K 线形态与仓位情况进行分步决策')
@@ -814,6 +1025,109 @@ class APIServer:
                 'success': True,
                 'filename': filename,
                 'message': f'已导出到 {filename}'
+            })
+
+        @self.app.route('/api/trade/manual', methods=['POST'])
+        def manual_trade():
+            """手动模拟买入/卖出。"""
+            data = request.json or {}
+            bank = str(data.get('bank', '')).strip()
+            action = str(data.get('action', '')).strip().upper()
+
+            bank_error = self._validate_bank(bank)
+            if bank_error:
+                return bank_error
+
+            if action not in {'BUY', 'SELL'}:
+                return jsonify({'success': False, 'error': 'Invalid action'}), 400
+
+            grams, parse_error = self._parse_bounded_float(
+                raw_value=data.get('grams'),
+                field_name='grams',
+                minimum=0.01,
+                maximum=1_000_000,
+                default=1.0,
+            )
+            if parse_error:
+                return parse_error
+
+            trader = self.traders[bank]
+            quote = trader.get_quote()
+            if not quote:
+                return jsonify({'success': False, 'error': '无法获取当前价格'}), 503
+
+            price = float(quote.get('price') or 0)
+            if price <= 0:
+                return jsonify({'success': False, 'error': '当前价格无效'}), 503
+
+            if not trader.is_trading_time():
+                return jsonify({'success': False, 'error': '当前不在交易时间'}), 400
+
+            if action == 'BUY':
+                total_cost = price * grams
+                if total_cost > trader.balance:
+                    return jsonify({
+                        'success': False,
+                        'error': f'资金不足，当前可用 {trader.balance:.2f} 元，预计需要 {total_cost:.2f} 元'
+                    }), 400
+                success = trader.buy(grams)
+            else:
+                if trader.position <= 0:
+                    return jsonify({'success': False, 'error': '当前没有可卖出的持仓'}), 400
+                sell_grams = min(grams, trader.position)
+                success = trader.sell(sell_grams)
+
+            if not success:
+                return jsonify({'success': False, 'error': '模拟交易执行失败'}), 400
+
+            snapshot = self._build_dashboard_snapshot()
+            latest_trade = snapshot['trades'][0] if snapshot.get('trades') else None
+            action_label = '买入' if action == 'BUY' else '卖出'
+            return jsonify({
+                'success': True,
+                'message': f'{bank} {action_label}执行成功',
+                'trade': latest_trade,
+                'snapshot': snapshot,
+            })
+
+        @self.app.route('/api/account/recharge', methods=['POST'])
+        def recharge_account():
+            """手动增加账户余额（模拟充值）。"""
+            data = request.json or {}
+            bank = str(data.get('bank', '')).strip()
+
+            bank_error = self._validate_bank(bank)
+            if bank_error:
+                return bank_error
+
+            amount, parse_error = self._parse_bounded_float(
+                raw_value=data.get('amount'),
+                field_name='amount',
+                minimum=0.01,
+                maximum=100_000_000,
+                default=0.0,
+            )
+            if parse_error:
+                return parse_error
+            if amount <= 0:
+                return jsonify({'success': False, 'error': 'amount 必须大于 0'}), 400
+
+            trader = self.traders[bank]
+            trader.balance += amount
+            try:
+                trader.save_state()
+            except Exception:
+                pass
+
+            snapshot = self._build_dashboard_snapshot()
+            new_balance = snapshot.get('positions', {}).get(bank, {}).get('balance', trader.balance)
+            return jsonify({
+                'success': True,
+                'message': f'{bank} 余额已增加 {amount:.2f} 元，当前余额 {float(new_balance):.2f} 元',
+                'bank': bank,
+                'amount': amount,
+                'balance': float(new_balance),
+                'snapshot': snapshot,
             })
         
         # ========== K 线数据 ==========
@@ -1168,15 +1482,29 @@ class APIServer:
             """文本转语音，返回可下载音频 URL。"""
             data = request.json or {}
             text = data.get('text', '')
-            output_name, err = self.ai_bridge.tts_synthesize(text)
+            request_id = str(data.get('request_id') or '').strip()
+            fast_mode = str(data.get('fast', '')).lower() in {'1', 'true', 'yes', 'on'}
+            output_name, err = self.ai_bridge.tts_synthesize(text, fast_mode=fast_mode, request_id=request_id)
             if err:
-                return jsonify({'success': False, 'error': err}), 400
+                status_code = 499 if err == 'TTS 已取消' else 400
+                return jsonify({'success': False, 'error': err, 'request_id': request_id}), status_code
 
             return jsonify({
                 'success': True,
                 'audio_file': output_name,
-                'audio_url': f'/api/ai/artifacts/{output_name}'
+                'audio_url': f'/api/ai/artifacts/{output_name}',
+                'request_id': request_id,
             })
+
+        @self.app.route('/api/ai/tts/cancel', methods=['POST'])
+        def ai_tts_cancel():
+            data = request.json or {}
+            request_id = str(data.get('request_id') or '').strip()
+            if not request_id:
+                return jsonify({'success': False, 'error': 'request_id 不能为空'}), 400
+
+            cancelled = self.ai_bridge.cancel_tts(request_id)
+            return jsonify({'success': True, 'request_id': request_id, 'cancelled': bool(cancelled)})
 
         @self.app.route('/api/ai/asr', methods=['POST'])
         def ai_asr():
@@ -1295,7 +1623,8 @@ class APIServer:
             """图像生成：生成行情快报图（新闻+价格）。"""
             data = request.json or {}
             payload = data.get('market_data') or self._build_market_payload()
-            news_lines = data.get('news_lines') or self._build_market_news(payload)
+            include_external = str(data.get('include_external_news', '1')).lower() not in {'0', 'false', 'no', 'off'}
+            news_lines = data.get('news_lines') or self._build_market_news(payload, include_external=include_external)
             title = data.get('title') or '积存金行情快报'
 
             try:
@@ -1313,6 +1642,20 @@ class APIServer:
                 'image_url': f'/api/ai/artifacts/{output_name}',
                 'news_lines': news_lines,
                 'warning': warn,
+                'include_external_news': include_external,
+            })
+
+        @self.app.route('/api/ai/news/brief', methods=['POST'])
+        def ai_market_brief_news_preview():
+            """快报新闻预览接口（不触发图像生成）。"""
+            data = request.json or {}
+            payload = data.get('market_data') or self._build_market_payload()
+            include_external = str(data.get('include_external_news', '1')).lower() not in {'0', 'false', 'no', 'off'}
+            news_lines = self._build_market_news(payload, include_external=include_external)
+            return jsonify({
+                'success': True,
+                'include_external_news': include_external,
+                'news_lines': news_lines,
             })
 
         @self.app.route('/api/ai/chat', methods=['POST'])
@@ -1346,36 +1689,36 @@ class APIServer:
                     image_result, err = self.ai_bridge.vlm_analyze_image(image_file_path)
                     if err:
                         return jsonify({'success': False, 'error': err}), 400
+                    if image_result and str(image_result).strip().startswith('分析失败'):
+                        image_result = None
 
                 payload = self._build_market_payload()
-                openclaw_flow = self._build_openclaw_flow()
                 analysis_payload = {
                     'user_message': message,
                     'market_payload': payload,
-                    'openclaw_flow': openclaw_flow,
                 }
                 market_result, err = self.ai_bridge.vlm_analyze_market(analysis_payload)
+                vlm_backend = getattr(self.ai_bridge.vlm, 'backend', 'unknown') if self.ai_bridge.vlm else 'unknown'
+                response_mode = getattr(self.ai_bridge.vlm, 'last_response_mode', 'unknown') if self.ai_bridge.vlm else 'unknown'
                 if err:
-                    # VLM 不可用时回退到简要文本
-                    openclaw_brief = self._build_openclaw_brief(openclaw_flow)
-                    market_result = (
-                        f"当前浙商价格 {payload['zheshang'].get('price')} 元/克，"
-                        f"民生价格 {payload['minsheng'].get('price')} 元/克。\n{openclaw_brief}"
-                    )
+                    return jsonify({'success': False, 'error': f'VL 分析失败: {err}', 'vlm_backend': vlm_backend}), 503
 
-                reply_parts = []
-                if message:
-                    reply_parts.append(f'你的问题: {message}')
-                reply_parts.append('OpenClaw 信息流:')
-                reply_parts.append(self._build_openclaw_brief(openclaw_flow))
-                reply_parts.append('行情分析:')
-                reply_parts.append(market_result)
+                # 用户要求对话直接走 VL 模型输出：若仍在规则回退模式则返回错误而非默认模板文本。
+                if vlm_backend == 'fallback':
+                    reason = getattr(self.ai_bridge.vlm, 'fallback_reason', '未知原因') if self.ai_bridge.vlm else '未知原因'
+                    return jsonify({
+                        'success': False,
+                        'error': f'VL 原生模型未就绪（当前为规则回退模式）: {reason}',
+                        'vlm_backend': vlm_backend,
+                    }), 503
 
                 if image_result:
-                    reply_parts.append('图片理解:')
-                    reply_parts.append(image_result)
+                    reply_text = (image_result or '').strip()
+                else:
+                    reply_text = (market_result or '').strip()
 
-                reply_text = '\n'.join(reply_parts)
+                if not reply_text:
+                    return jsonify({'success': False, 'error': 'VL 模型返回空内容', 'vlm_backend': vlm_backend}), 502
 
                 image_url = None
                 keywords = ['快报', '海报', '图片', '图像生成', '行情图']
@@ -1392,13 +1735,146 @@ class APIServer:
                 return jsonify({
                     'success': True,
                     'reply': reply_text,
+                    'vlm_backend': vlm_backend,
+                    'response_mode': response_mode,
                     'market_input': payload,
-                    'openclaw_flow': openclaw_flow,
                     'image_analysis': image_result,
                     'image_url': image_url,
                 })
             finally:
                 if temp_file_path and Path(temp_file_path).exists():
+                    try:
+                        os.remove(temp_file_path)
+                    except OSError:
+                        pass
+
+        @self.app.route('/api/ai/chat/stream', methods=['POST'])
+        def ai_chat_stream():
+            """SSE 流式聊天接口，增量输出 VL 模型 token。"""
+            message = ''
+            temp_file_path = None
+            image_file_path = None
+            streaming_response = False
+
+            try:
+                if request.content_type and 'multipart/form-data' in request.content_type:
+                    message = request.form.get('message', '').strip()
+                    if 'image' in request.files:
+                        image = request.files['image']
+                        temp_file_path, err = self._save_uploaded_file(
+                            file_obj=image,
+                            prefix='ai_chat_',
+                            default_suffix='.png',
+                            allowed_suffixes=ALLOWED_IMAGE_EXTENSIONS,
+                        )
+                        if err:
+                            return jsonify({'success': False, 'error': err}), 400
+                        image_file_path = temp_file_path
+                else:
+                    data = request.json or {}
+                    message = (data.get('message') or '').strip()
+                    image_file_path = data.get('image_path', '')
+
+                payload = self._build_market_payload()
+                analysis_payload = {
+                    'user_message': message,
+                    'market_payload': payload,
+                }
+
+                market_stream, err = self.ai_bridge.vlm_analyze_market_stream(analysis_payload)
+                vlm_backend = getattr(self.ai_bridge.vlm, 'backend', 'unknown') if self.ai_bridge.vlm else 'unknown'
+                if err:
+                    return jsonify({'success': False, 'error': f'VL 流式分析失败: {err}', 'vlm_backend': vlm_backend}), 503
+
+                if vlm_backend == 'fallback':
+                    reason = getattr(self.ai_bridge.vlm, 'fallback_reason', '未知原因') if self.ai_bridge.vlm else '未知原因'
+                    return jsonify({
+                        'success': False,
+                        'error': f'VL 原生模型未就绪（当前为规则回退模式）: {reason}',
+                        'vlm_backend': vlm_backend,
+                    }), 503
+
+                image_stream = None
+                if image_file_path:
+                    image_stream, err = self.ai_bridge.vlm_analyze_image_stream(image_file_path)
+                    if err:
+                        return jsonify({'success': False, 'error': err, 'vlm_backend': vlm_backend}), 400
+
+                @stream_with_context
+                def event_stream():
+                    image_url = None
+                    try:
+                        response_mode = getattr(self.ai_bridge.vlm, 'last_response_mode', 'unknown') if self.ai_bridge.vlm else 'unknown'
+                        yield self._sse_event('meta', {'vlm_backend': vlm_backend, 'mode': 'stream', 'response_mode': response_mode})
+
+                        image_text_parts = []
+                        if image_stream is not None:
+                            yield self._sse_event('phase', {'name': 'image'})
+                            for token in image_stream:
+                                text = str(token or '')
+                                if not text:
+                                    continue
+                                image_text_parts.append(text)
+                                yield self._sse_event('delta', {'channel': 'image', 'text': text})
+
+                        if image_text_parts:
+                            reply_text = ''.join(image_text_parts).strip()
+                        else:
+                            market_text_parts = []
+                            yield self._sse_event('phase', {'name': 'market'})
+                            for token in market_stream:
+                                text = str(token or '')
+                                if not text:
+                                    continue
+                                market_text_parts.append(text)
+                                yield self._sse_event('delta', {'channel': 'market', 'text': text})
+                            reply_text = ''.join(market_text_parts).strip()
+
+                        if not reply_text:
+                            raise RuntimeError('VL 模型返回空内容')
+
+                        keywords = ['快报', '海报', '图片', '图像生成', '行情图']
+                        if any(k in message for k in keywords):
+                            news_lines = self._build_market_news(payload)
+                            output_name, _ = self.ai_bridge.generate_market_brief_image(
+                                market_data=payload,
+                                news_lines=news_lines,
+                                title='积存金行情快报',
+                            )
+                            image_url = f'/api/ai/artifacts/{output_name}'
+                            appendix = f"\n\n已为你生成行情快报图: {image_url}"
+                            reply_text += appendix
+                            yield self._sse_event('delta', {'channel': 'system', 'text': appendix})
+
+                        yield self._sse_event('done', {
+                            'reply': reply_text,
+                            'vlm_backend': vlm_backend,
+                            'response_mode': getattr(self.ai_bridge.vlm, 'last_response_mode', 'unknown') if self.ai_bridge.vlm else 'unknown',
+                            'market_input': payload,
+                            'image_url': image_url,
+                        })
+                    except Exception as e:
+                        yield self._sse_event('error', {
+                            'error': str(e),
+                            'vlm_backend': vlm_backend,
+                            'response_mode': getattr(self.ai_bridge.vlm, 'last_response_mode', 'unknown') if self.ai_bridge.vlm else 'unknown',
+                        })
+                    finally:
+                        if temp_file_path and Path(temp_file_path).exists():
+                            try:
+                                os.remove(temp_file_path)
+                            except OSError:
+                                pass
+
+                headers = {
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'X-Accel-Buffering': 'no',
+                }
+                streaming_response = True
+                return Response(event_stream(), mimetype='text/event-stream', headers=headers)
+            finally:
+                if (not streaming_response) and temp_file_path and Path(temp_file_path).exists():
                     try:
                         os.remove(temp_file_path)
                     except OSError:

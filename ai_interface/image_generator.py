@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import importlib
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -30,7 +32,36 @@ class MarketImageGenerator:
         self.pipeline = None
         self.pipeline_error = None
         self._use_openvino = False
+        self._infer_lock = threading.Lock()
         self._try_load_pipeline()
+
+    def _configure_scheduler(self):
+        """对齐 workshop 的调度器参数（若后端支持）。"""
+        if self.pipeline is None:
+            return
+        try:
+            diffusers_mod = importlib.import_module('diffusers')
+            scheduler_cls = getattr(diffusers_mod, 'FlowMatchEulerDiscreteScheduler', None)
+            if scheduler_cls is None:
+                return
+            self.pipeline.scheduler = scheduler_cls(num_train_timesteps=1000, shift=3.0)
+        except Exception:
+            # 调度器不可用时保持默认，不影响主流程。
+            return
+
+    def _has_diffusers_weights(self) -> bool:
+        """检查是否存在标准 Diffusers 所需的关键权重文件。"""
+        transformer_dir = self.model_dir / "transformer"
+        if not transformer_dir.exists():
+            return False
+
+        required = [
+            "diffusion_pytorch_model.bin",
+            "diffusion_pytorch_model.safetensors",
+            "pytorch_model.bin",
+            "model.safetensors",
+        ]
+        return any((transformer_dir / name).exists() for name in required)
 
     def _try_load_pipeline(self):
         """尝试加载文生图管线，优先 OpenVINO，不成功则回退到模板渲染。"""
@@ -39,8 +70,13 @@ class MarketImageGenerator:
             return
 
         # 首先尝试使用 OpenVINO 加载
+        openvino_reason = None
         try:
-            from optimum.intel import OVZImagePipeline
+            optimum_intel = importlib.import_module('optimum.intel')
+            OVZImagePipeline = getattr(optimum_intel, 'OVZImagePipeline', None)
+            if OVZImagePipeline is None:
+                openvino_reason = "当前 optimum.intel 版本不包含 OVZImagePipeline"
+                raise RuntimeError(openvino_reason)
 
             print(f"加载文生图模型 (OpenVINO): {self.model_dir}")
             self.pipeline = OVZImagePipeline.from_pretrained(
@@ -48,12 +84,20 @@ class MarketImageGenerator:
                 device=self.device
             )
             self._use_openvino = True
+            self._configure_scheduler()
             self.pipeline_error = None
             print("✓ 文生图模型加载成功 (OpenVINO 加速)")
             return
         except Exception as e:
-            print(f"OpenVINO 加载失败: {e}")
-            print("尝试标准 Diffusers 加载...")
+            openvino_reason = openvino_reason or str(e)
+            print(f"OpenVINO 加载失败: {openvino_reason}")
+
+        if not self._has_diffusers_weights():
+            self.pipeline = None
+            self.pipeline_error = f"文生图模型缺少 Diffusers 权重，已启用模板渲染（OpenVINO 原因: {openvino_reason}）"
+            return
+
+        print("尝试标准 Diffusers 加载...")
 
         # 回退到标准 Diffusers
         try:
@@ -66,16 +110,27 @@ class MarketImageGenerator:
             print("✓ 文生图模型加载成功 (标准 Diffusers)")
         except Exception as e:
             self.pipeline = None
-            self.pipeline_error = f"文生图模型加载失败，已回退模板渲染: {e}"
+            self.pipeline_error = f"文生图模型加载失败，已回退模板渲染: {e}（OpenVINO 原因: {openvino_reason}）"
 
     def _compose_prompt(self, market_data: Dict, news_lines: List[str]) -> str:
         zs = market_data.get('zheshang', {})
         ms = market_data.get('minsheng', {})
+        z_price = zs.get('price', 'N/A')
+        z_rate = zs.get('change_rate', 'N/A')
+        m_price = ms.get('price', 'N/A')
+        m_rate = ms.get('change_rate', 'N/A')
+        headline = (news_lines[0] if news_lines else '关注短线波动与仓位管理').replace('\n', ' ').strip()
+
+        # 参考 workshop 的中文提示词风格，约束版式和可读性，减少错字与乱码。
         return (
-            "金融科技风格信息图，深色背景，金色高亮，中文可读排版。"
-            f"浙商积存金价格 {zs.get('price', 'N/A')} 元/克，涨跌 {zs.get('change_rate', 'N/A')}。"
-            f"民生积存金价格 {ms.get('price', 'N/A')} 元/克，涨跌 {ms.get('change_rate', 'N/A')}。"
-            f"快报要点: {'; '.join(news_lines[:3])}。"
+            "金融科技信息图海报，深蓝黑背景，金色数字高亮，高对比，清晰中文排版。"
+            "布局要求：上方主标题，中间两栏数据卡片，底部风险提示。"
+            "只生成一张海报，不要人物，不要卡通，不要多余装饰文字。"
+            f"主标题：积存金行情快报。"
+            f"卡片1：浙商积存金 当前 {z_price} 元/克，涨跌 {z_rate}。"
+            f"卡片2：民生积存金 当前 {m_price} 元/克，涨跌 {m_rate}。"
+            f"快报要点：{headline}。"
+            "字体要求：中文可读，数字大号，避免错别字、重影、乱码。"
         )
 
     def _get_font(self, size: int):
@@ -170,22 +225,36 @@ class MarketImageGenerator:
         if self.pipeline is not None:
             try:
                 prompt = self._compose_prompt(market_data, news_lines)
-                
-                # OpenVINO 和 Diffusers 的调用方式略有不同
-                if self._use_openvino:
-                    # OpenVINO pipeline 使用不同的参数
-                    import torch
-                    image = self.pipeline(
-                        prompt=prompt,
-                        height=512,
-                        width=512,
-                        num_inference_steps=9,
-                        guidance_scale=0.0,
-                        generator=torch.Generator("cpu").manual_seed(42),
-                    ).images[0]
-                else:
-                    # 标准 Diffusers pipeline
-                    image = self.pipeline(prompt=prompt, num_inference_steps=20).images[0]
+
+                # OpenVINO 管线在并发时可能报 "Infer Request is busy"，这里串行化推理并做一次重试。
+                image = None
+                for attempt in range(2):
+                    try:
+                        with self._infer_lock:
+                            if self._use_openvino:
+                                import torch
+                                ov_kwargs = {
+                                    'prompt': prompt,
+                                    'height': 512,
+                                    'width': 512,
+                                    'num_inference_steps': 9,
+                                    'guidance_scale': 0.0,
+                                    'negative_prompt': "乱码文字, 错字, 重影, 模糊文字, 低清晰度, watermark",
+                                    'generator': torch.Generator("cpu").manual_seed(42),
+                                }
+                                try:
+                                    image = self.pipeline(**ov_kwargs).images[0]
+                                except TypeError:
+                                    ov_kwargs.pop('negative_prompt', None)
+                                    image = self.pipeline(**ov_kwargs).images[0]
+                            else:
+                                image = self.pipeline(prompt=prompt, num_inference_steps=20).images[0]
+                        break
+                    except Exception as e:
+                        if 'busy' in str(e).lower() and attempt == 0:
+                            time.sleep(0.25)
+                            continue
+                        raise
                 
                 image.save(str(output_path))
                 mode = "OpenVINO" if self._use_openvino else "Diffusers"

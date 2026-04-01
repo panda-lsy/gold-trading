@@ -4,7 +4,9 @@
 使用 baseline 的 OVQwen3TTSModel helper
 """
 import os
+import re
 from pathlib import Path
+import numpy as np
 
 
 class Qwen3TTS:
@@ -43,9 +45,53 @@ class Qwen3TTS:
             print("请安装依赖: pip install qwen-tts")
         except Exception as e:
             print(f"加载失败: {e}")
+
+    def _normalize_text(self, text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+        cleaned = cleaned.replace("\n", "，")
+        return cleaned
+
+    def _split_text(self, text: str, max_chars: int = 80):
+        if not text:
+            return []
+        pieces = []
+        for seg in re.split(r"(?<=[。！？!?；;])", text):
+            seg = seg.strip(" ，。；;!?！？")
+            if not seg:
+                continue
+            while len(seg) > max_chars:
+                pieces.append(seg[:max_chars])
+                seg = seg[max_chars:]
+            if seg:
+                pieces.append(seg)
+        return pieces or [text[:max_chars]]
+
+    def _to_int16_waveform(self, wavs):
+        waveform = wavs
+        if isinstance(waveform, (list, tuple)):
+            if len(waveform) == 0:
+                raise ValueError("empty waveform")
+            waveform = waveform[0]
+
+        waveform = np.asarray(waveform)
+        if waveform.ndim > 1:
+            waveform = np.squeeze(waveform)
+        if waveform.ndim != 1:
+            raise ValueError(f"unexpected waveform shape: {waveform.shape}")
+        if waveform.size == 0:
+            raise ValueError("empty waveform")
+
+        if np.issubdtype(waveform.dtype, np.floating):
+            waveform = np.nan_to_num(waveform, nan=0.0, posinf=0.0, neginf=0.0)
+            waveform = np.clip(waveform, -1.0, 1.0)
+            waveform = (waveform * 32767.0).astype(np.int16)
+        elif waveform.dtype != np.int16:
+            waveform = waveform.astype(np.int16)
+        return waveform
     
-    def synthesize(self, text: str, output_file: str = None, speaker: str = "vivian", 
-                   language: str = "Chinese", instruct: str = "") -> str:
+    def synthesize(self, text: str, output_file: str = None, speaker: str = "vivian",
+                   language: str = "Chinese", instruct: str = "", fast_mode: bool = False,
+                   should_cancel=None) -> str:
         """
         合成语音
         
@@ -65,21 +111,55 @@ class Qwen3TTS:
         
         if output_file is None:
             output_file = "/tmp/tts_output.wav"
+
+        normalized_text = self._normalize_text(text)
+        if fast_mode and len(normalized_text) > 64:
+            normalized_text = normalized_text[:64]
+        if not normalized_text:
+            print("输入文本为空")
+            return None
         
         try:
-            # 使用 OVQwen3TTSModel 的 generate_custom_voice API
-            wavs, sr = self.model.generate_custom_voice(
-                text=text,
-                speaker=speaker,
-                language=language,
-                instruct=instruct,
-                non_streaming_mode=True,
-                max_new_tokens=2048,
-            )
+            chunk_limit = 32 if fast_mode else 80
+            chunks = self._split_text(normalized_text, max_chars=chunk_limit)
+            if not chunks:
+                raise ValueError("empty text chunks")
+
+            pcm_chunks = []
+            sr = 24000
+            for chunk in chunks:
+                if callable(should_cancel) and should_cancel():
+                    print("TTS 合成已取消")
+                    return None
+
+                token_budget = max(96, min(320 if fast_mode else 900, len(chunk) * (4 if fast_mode else 9)))
+                wavs, sr = self.model.generate_custom_voice(
+                    text=chunk,
+                    speaker=speaker,
+                    language=language,
+                    instruct=instruct,
+                    non_streaming_mode=True,
+                    max_new_tokens=token_budget,
+                )
+                pcm = self._to_int16_waveform(wavs)
+                pcm_chunks.append(pcm)
+
+            if callable(should_cancel) and should_cancel():
+                print("TTS 合成已取消")
+                return None
+
+            # 每段之间插入短静音，降低段落衔接断裂感。
+            silence = np.zeros(int(sr * 0.04), dtype=np.int16)
+            merged = []
+            for i, pcm in enumerate(pcm_chunks):
+                merged.append(pcm)
+                if i != len(pcm_chunks) - 1:
+                    merged.append(silence)
+            waveform = np.concatenate(merged).astype(np.int16)
             
             # 保存音频
             import scipy.io.wavfile as wav
-            wav.write(output_file, sr, wavs)
+            wav.write(output_file, int(sr), waveform)
             
             print(f"✓ 语音已保存 (OpenVINO): {output_file}")
             return output_file

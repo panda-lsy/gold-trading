@@ -28,6 +28,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --ai-sidebar-top: 100px;
+            --ai-sidebar-right: 14px;
+            --ai-sidebar-width: 390px;
+            --ai-sidebar-bottom-gap: 12px;
+        }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
         .header { background: #161b22; padding: 20px; border-bottom: 1px solid #30363d; position: sticky; top: 0; z-index: 100; }
         .header-content { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
@@ -81,6 +87,61 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .stat-card { background: #161b22; border-radius: 12px; padding: 20px; text-align: center; border: 1px solid #30363d; }
         .stat-value { font-size: 2em; font-weight: 300; color: #FFD700; margin-bottom: 5px; }
         .stat-label { color: #8b949e; font-size: 0.85em; }
+        .page-controls { display: flex; justify-content: flex-end; margin: -4px 0 14px; }
+        .pnl-toggle-btn {
+            border: 1px solid #3d5f98;
+            border-radius: 999px;
+            background: rgba(16, 31, 58, 0.92);
+            color: #d5e7ff;
+            cursor: pointer;
+            padding: 7px 14px;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .pnl-toggle-btn:hover { border-color: #78a6ff; transform: translateY(-1px); }
+        .pnl-toggle-btn.active { background: rgba(54, 112, 204, 0.88); border-color: #8db8ff; color: #eff6ff; }
+        .trade-ops { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+        .trade-op-btn { border: 1px solid #30363d; border-radius: 10px; cursor: pointer; padding: 10px 12px; font-size: 0.92em; transition: all 0.2s; }
+        .trade-op-buy { background: rgba(35, 197, 94, 0.15); color: #7ef0aa; }
+        .trade-op-sell { background: rgba(239, 68, 68, 0.14); color: #ffb3b3; }
+        .trade-op-topup { background: rgba(76, 145, 255, 0.14); color: #b9d7ff; }
+        .trade-op-btn:hover { transform: translateY(-1px); border-color: #5d7ec7; }
+        .trade-op-tip { margin-top: 8px; color: #8b949e; font-size: 12px; }
+        .trade-modal-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 18, 0.78);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            padding: 14px;
+        }
+        .trade-modal {
+            width: min(460px, 100%);
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 14px;
+            box-shadow: 0 18px 42px rgba(0,0,0,0.45);
+            overflow: hidden;
+        }
+        .trade-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px;
+            border-bottom: 1px solid #30363d;
+        }
+        .trade-modal-title { font-size: 1.02em; color: #e6edf3; }
+        .trade-modal-close { background: transparent; border: none; color: #8b949e; font-size: 18px; cursor: pointer; }
+        .trade-modal-body { padding: 16px; }
+        .trade-quote { background: rgba(255,255,255,0.03); border: 1px solid #30363d; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+        .trade-quote-main { font-size: 1.3em; color: #ffd97a; margin-bottom: 4px; }
+        .trade-quote-sub { font-size: 0.88em; color: #8b949e; }
+        .trade-modal-field label { display: block; color: #8b949e; font-size: 12px; margin-bottom: 6px; }
+        .trade-modal-field input { width: 100%; }
+        .trade-modal-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+        .trade-modal-msg { margin-top: 10px; min-height: 46px; color: #d9e6ff; white-space: pre-wrap; line-height: 1.5; font-size: 13px; }
         .ai-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
         #tab-ai .card { background: linear-gradient(180deg, rgba(32,47,78,0.45), rgba(22,29,43,0.95)); border-color: #36507a; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); }
         #tab-ai .card-header { border-bottom-color: rgba(140, 178, 235, 0.25); }
@@ -101,15 +162,229 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .ai-window.active { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding-right: 4px; }
         .ai-window-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
         .ai-chat-card { display: flex; flex-direction: column; min-height: 0; }
-        .chat-window { flex: 1; min-height: 180px; max-height: 265px; overflow: auto; border: 1px solid #36507a; border-radius: 10px; padding: 10px; background: #0f1830; margin-bottom: 10px; }
+        .chat-header-row { display: flex; align-items: center; justify-content: space-between; }
+        .chat-header-actions { display: flex; align-items: center; gap: 8px; }
+        .chat-window { flex: 1; min-height: 180px; max-height: 265px; overflow: auto; border: 1px solid #36507a; border-radius: 10px; padding: 12px 12px 4px; background: #0f1830; margin-bottom: 10px; }
         .chat-window::-webkit-scrollbar { width: 10px; }
         .chat-window::-webkit-scrollbar-track { background: #0a1224; border-radius: 10px; }
         .chat-window::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #2e73d8, #6ca7ff); border-radius: 10px; border: 2px solid #0a1224; }
         .chat-window { scrollbar-width: thin; scrollbar-color: #4d8cf1 #0a1224; }
-        .chat-item { margin-bottom: 10px; }
-        .role { font-size: 12px; color: #8b949e; margin-bottom: 4px; }
-        .bubble { background: rgba(255,255,255,0.06); border: 1px solid #36507a; border-radius: 8px; padding: 8px; white-space: pre-wrap; line-height: 1.5; }
+        .chat-item { margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+        .role { font-size: 12px; color: #8b949e; margin-bottom: 0; }
+        .bubble { max-width: 92%; background: rgba(255,255,255,0.06); border: 1px solid #36507a; border-radius: 12px; padding: 9px 10px; white-space: pre-wrap; line-height: 1.5; }
+        .chat-item.user .role { text-align: right; color: #9dc3ff; }
+        .chat-item.user .bubble {
+            align-self: flex-end;
+            background: linear-gradient(135deg, rgba(58, 129, 231, 0.92), rgba(40, 102, 188, 0.92));
+            border-color: rgba(121, 178, 255, 0.65);
+            color: #edf5ff;
+        }
+        .chat-item.ai .bubble { align-self: flex-start; }
+        .chat-item.system .role { color: #c8a969; }
+        .chat-item.system .bubble {
+            align-self: stretch;
+            max-width: 100%;
+            background: rgba(255, 217, 122, 0.08);
+            border: 1px dashed rgba(255, 217, 122, 0.4);
+            color: #ffe8bf;
+        }
+        .loading-inline { display: inline-flex; align-items: center; gap: 8px; color: #cfe2ff; }
+        .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.2); border-top-color: #7ab3ff; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .ctrl-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .chat-composer {
+            display: grid;
+            grid-template-columns: 40px 1fr 40px;
+            gap: 8px;
+            align-items: center;
+            margin-top: 4px;
+        }
+        .composer-input-wrap {
+            border: 1px solid #36507a;
+            border-radius: 999px;
+            background: rgba(7, 16, 35, 0.9);
+            padding: 0 10px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .composer-input-wrap:focus-within { border-color: #7eaefc; box-shadow: 0 0 0 2px rgba(126, 174, 252, 0.2); }
+        .composer-input-wrap .input {
+            border: none;
+            background: transparent;
+            padding: 10px 0;
+            min-width: 0;
+        }
+        .composer-input-wrap .input:focus { outline: none; }
+        .composer-icon-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 999px;
+            border: 1px solid #4d6aa6;
+            background: rgba(19, 35, 65, 0.9);
+            color: #d8e8ff;
+            cursor: pointer;
+            font-size: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .btn-icon-wrap { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }
+        .btn-icon-svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            display: block;
+        }
+        .btn-label { font-size: 13px; letter-spacing: 0.2px; }
+        .composer-icon-btn:hover { border-color: #78a6ff; background: rgba(31, 55, 97, 0.95); }
+        .composer-icon-btn.recording {
+            background: rgba(176, 53, 53, 0.95);
+            border-color: #ef7777;
+            box-shadow: 0 0 0 2px rgba(239, 119, 119, 0.2);
+        }
+        .composer-icon-btn.send {
+            background: linear-gradient(135deg, rgba(53,120,216,0.95), rgba(81,150,247,0.95));
+            border-color: #7ab3ff;
+            font-size: 14px;
+            font-weight: 700;
+            width: auto;
+            min-width: 64px;
+            padding: 0 12px;
+        }
+        .composer-icon-btn.muted { opacity: 0.55; cursor: not-allowed; }
+        .chat-upload-preview {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            border: 1px solid rgba(122, 166, 255, 0.35);
+            border-radius: 8px;
+            background: rgba(12, 24, 51, 0.9);
+            color: #dbe7ff;
+            padding: 6px 10px;
+            margin-bottom: 8px;
+        }
+        .chat-upload-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+        .chat-upload-thumb {
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 1px solid rgba(122, 166, 255, 0.45);
+            background: rgba(5, 11, 24, 0.85);
+            flex: 0 0 auto;
+        }
+        #chatUploadName {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 210px;
+            font-size: 12px;
+        }
+        .chat-upload-remove {
+            border: 1px solid #45639e;
+            border-radius: 999px;
+            padding: 2px 8px;
+            background: rgba(17, 34, 65, 0.95);
+            color: #d3e4ff;
+            cursor: pointer;
+        }
+        .chat-bubble-image {
+            width: 132px;
+            max-width: 100%;
+            border-radius: 10px;
+            object-fit: cover;
+            border: 1px solid rgba(193, 220, 255, 0.5);
+            display: block;
+            margin-bottom: 6px;
+            background: rgba(9, 19, 36, 0.8);
+        }
+        .chat-bubble-text { line-height: 1.45; }
+        .chat-composer.dragover {
+            border: 1px dashed #84b2ff;
+            border-radius: 12px;
+            padding: 6px;
+            background: rgba(52, 97, 171, 0.18);
+        }
+        .voice-toggle-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 999px;
+            border: 1px solid #4d6aa6;
+            background: rgba(19, 35, 65, 0.9);
+            color: #d8e8ff;
+            cursor: pointer;
+            font-size: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .voice-toggle-btn:hover { border-color: #78a6ff; background: rgba(31, 55, 97, 0.95); }
+        .voice-toggle-btn.active { box-shadow: 0 0 0 2px rgba(76, 140, 255, 0.22); }
+        .voice-toggle-btn.muted { opacity: 0.62; }
+        .voice-toggle-btn.busy { color: transparent; pointer-events: none; }
+        .voice-toggle-btn .btn-icon-wrap { width: 18px; height: 18px; }
+        .voice-toggle-btn .btn-icon-svg { width: 18px; height: 18px; }
+        .voice-toggle-btn.busy::after {
+            content: '';
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.22);
+            border-top-color: #d9ebff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            position: absolute;
+            inset: 0;
+            margin: auto;
+        }
+        .stop-stream-btn {
+            border-color: #c06a6a;
+            background: rgba(122, 38, 38, 0.95);
+            color: #ffe5e5;
+        }
+        .stop-stream-btn:hover { border-color: #ef9292; background: rgba(150, 44, 44, 0.95); }
+        .chat-image-preview-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(3, 8, 18, 0.82);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1200;
+            padding: 20px;
+        }
+        .chat-image-preview-large {
+            max-width: min(780px, 92vw);
+            max-height: 82vh;
+            border-radius: 12px;
+            border: 1px solid rgba(157, 195, 255, 0.65);
+            box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
+            object-fit: contain;
+            background: rgba(7, 15, 32, 0.95);
+        }
+        .mic-btn {
+            border: 1px solid #4a7cc7;
+            border-radius: 999px;
+            background: linear-gradient(135deg, rgba(32,70,136,0.95), rgba(66,111,193,0.95));
+            color: #e8f1ff;
+            font-weight: 600;
+            padding: 8px 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .mic-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(55, 103, 187, 0.35); }
+        .mic-btn.listening {
+            background: linear-gradient(135deg, rgba(173,55,55,0.95), rgba(224,92,92,0.95));
+            border-color: #ef7777;
+            box-shadow: 0 0 0 2px rgba(239, 119, 119, 0.2);
+        }
+        .mic-btn.muted { opacity: 0.55; cursor: not-allowed; }
         .input, .file, .textarea { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; color: #e6edf3; padding: 10px; }
         .textarea { min-height: 90px; resize: vertical; }
         .out { margin-top: 8px; border: 1px dashed #4f73af; border-radius: 8px; padding: 10px; white-space: pre-wrap; min-height: 72px; color: #d9e6ff; background: rgba(8, 16, 34, 0.7); font-size: 13px; line-height: 1.5; }
@@ -120,10 +395,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: flex;
             flex-direction: column;
             position: fixed;
-            right: 14px;
-            top: 86px;
-            width: 390px;
-            height: calc(100vh - 100px);
+            right: var(--ai-sidebar-right);
+            top: var(--ai-sidebar-top);
+            width: var(--ai-sidebar-width);
+            height: calc(100vh - var(--ai-sidebar-top) - var(--ai-sidebar-bottom-gap));
             overflow: hidden;
             padding-right: 0;
             z-index: 90;
@@ -131,8 +406,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }
         .ai-sidebar-toggle {
             position: fixed;
-            right: 412px;
-            top: 110px;
+            right: calc(var(--ai-sidebar-right) + var(--ai-sidebar-width) + 8px);
+            top: calc(var(--ai-sidebar-top) + 24px);
             z-index: 95;
             border: 1px solid #36507a;
             border-radius: 10px;
@@ -145,12 +420,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: right 0.25s ease;
         }
         body.ai-collapsed #tab-ai.ai-embedded {
-            transform: translateX(412px);
+            transform: translateX(calc(var(--ai-sidebar-width) + 22px));
             opacity: 0;
             pointer-events: none;
         }
         body.ai-collapsed .ai-sidebar-toggle {
-            right: 14px;
+            right: var(--ai-sidebar-right);
         }
         body.no-ai-sidebar #tab-ai.ai-embedded,
         body.no-ai-sidebar .ai-sidebar-toggle {
@@ -160,7 +435,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding-right: 20px !important;
         }
         @media (max-width: 1280px) {
-            .container { padding-right: 410px; }
+            .container { padding-right: calc(var(--ai-sidebar-width) + 20px); }
             body.ai-collapsed .container { padding-right: 20px; }
         }
         @media (max-width: 980px) {
@@ -180,7 +455,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }
             .container { padding-right: 20px; }
         }
-        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: repeat(2, 1fr); } .header-content { flex-direction: column; gap: 15px; } }
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .header-content { flex-direction: column; gap: 15px; }
+            .chat-composer { grid-template-columns: 36px 1fr 54px; }
+            .composer-icon-btn { width: 36px; height: 36px; font-size: 16px; }
+            .composer-icon-btn.send { min-width: 54px; padding: 0 10px; font-size: 13px; }
+            .chat-window { max-height: 235px; }
+        }
     </style>
 </head>
 <body>
@@ -211,6 +494,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         </div>
         
         <div id="tab-prices" class="tab-content active">
+            <div class="page-controls">
+                <button id="pnlFeeToggleBtn" class="pnl-toggle-btn" type="button" onclick="togglePnLFeeMode()">浮动盈亏：不计入预估卖出手续费</button>
+            </div>
             <div class="grid" id="pricesGrid"></div>
         </div>
         
@@ -253,7 +539,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="card ai-toolbar">
                 <div>
                     <div class="card-title">🤖 AI 常驻助手</div>
-                    <div class="tiny" id="aiContextHint" style="margin-top: 6px;">OpenClaw 信息流已接入，模型状态灯会自动刷新。</div>
+                    <div class="tiny" id="aiContextHint" style="margin-top: 6px;">对话优先走 VL 模型分析，模型状态灯会自动刷新。</div>
                     <div class="model-status-row" id="modelStatusRow">
                         <span class="model-tag tag-loading" id="tag-asr">ASR: 加载中</span>
                         <span class="model-tag tag-loading" id="tag-tts">TTS: 加载中</span>
@@ -266,61 +552,50 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
             <div class="ai-window-nav">
                 <button class="ai-window-btn active" id="btn-ai-chat" onclick="switchAIWindow('chat', this)">对话窗口</button>
-                <button class="ai-window-btn" id="btn-ai-speech" onclick="switchAIWindow('speech', this)">语音工具</button>
                 <button class="ai-window-btn" id="btn-ai-vision" onclick="switchAIWindow('vision', this)">视觉分析</button>
                 <button class="ai-window-btn" id="btn-ai-image" onclick="switchAIWindow('image', this)">快报生成</button>
             </div>
 
             <div class="ai-window active" id="ai-window-chat">
                 <div class="card ai-chat-card" style="margin-bottom: 10px;">
-                    <div class="card-header"><div class="card-title">语音聊天（可选上传图片）</div></div>
+                    <div class="card-header chat-header-row">
+                        <div class="card-title">语音聊天（可选上传图片）</div>
+                        <div class="chat-header-actions">
+                            <button class="voice-toggle-btn active" id="ttsToggleBtn" title="回复语音播报开关" onclick="toggleTTS()"></button>
+                            <button class="voice-toggle-btn stop-stream-btn" id="streamStopBtn" title="停止当前生成" onclick="stopChatStream()" style="display:none;"></button>
+                        </div>
+                    </div>
                     <div id="chatWindow" class="chat-window"></div>
-                    <div class="ctrl-row" style="margin-bottom: 8px;"><input id="chatInput" class="input" type="text" placeholder="输入问题，例如：当前适合买入吗？" /></div>
-                    <div class="ctrl-row">
-                        <input id="chatImage" class="file" style="max-width: 260px;" type="file" accept="image/*" />
-                        <button class="tab" style="padding: 8px 14px;" onclick="sendChat()">发送</button>
-                        <button class="tab" style="padding: 8px 14px;" id="micBtn" onclick="toggleMic()">开始语音输入</button>
-                        <label class="tiny"><input type="checkbox" id="ttsToggle" checked /> 回复语音播报</label>
+                    <div id="chatUploadPreview" class="chat-upload-preview" style="display:none;">
+                        <div class="chat-upload-main">
+                            <img id="chatUploadThumb" class="chat-upload-thumb" alt="图片预览" />
+                            <span id="chatUploadName">已选择图片</span>
+                        </div>
+                        <button class="chat-upload-remove" type="button" onclick="clearChatImageSelection()">移除</button>
+                    </div>
+                    <div class="chat-composer">
+                        <button class="composer-icon-btn" id="micBtn" title="开始语音输入" onclick="toggleMic()"></button>
+                        <div class="composer-input-wrap"><input id="chatInput" class="input" type="text" placeholder="输入问题，回车发送；Ctrl+V 可粘贴图片" /></div>
+                        <button class="composer-icon-btn" id="chatActionBtn" title="添加图片" onclick="handleChatAction()"></button>
+                        <input id="chatImage" type="file" accept="image/*" style="display:none;" />
                     </div>
                     <div class="tiny" id="micStatus" style="margin-top: 8px;">麦克风状态：未启动</div>
-                </div>
-            </div>
-
-            <div class="ai-window" id="ai-window-speech">
-                <div class="ai-window-grid">
-                    <div class="card">
-                        <div class="card-header"><div class="card-title">TTS 文本转语音</div></div>
-                        <textarea id="ttsText" class="textarea">你好，这是积存金 AI 助手的语音演示。</textarea>
-                        <button class="tab" style="padding: 8px 14px;" onclick="runTTS()">生成语音</button>
-                        <div id="ttsOut" class="out">等待执行...</div>
-                        <audio id="ttsAudio" controls style="width: 100%; margin-top: 10px;"></audio>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-header"><div class="card-title">ASR 语音识别</div></div>
-                        <input id="asrFile" class="file" type="file" accept="audio/*" />
-                        <button class="tab" style="padding: 8px 14px;" onclick="runASR()">执行识别</button>
-                        <div id="asrOut" class="out">等待执行...</div>
-                    </div>
                 </div>
             </div>
 
             <div class="ai-window" id="ai-window-vision">
                 <div class="ai-window-grid">
                     <div class="card">
-                        <div class="card-header"><div class="card-title">VLM 图像理解 / K线分析</div></div>
-                        <input id="vlmFile" class="file" type="file" accept="image/*" />
+                        <div class="card-header chat-header-row">
+                            <div class="card-title">K线专项分析（自动截取）</div>
+                            <button class="voice-toggle-btn active" id="visionTtsToggleBtn" title="视觉分析语音播报开关" onclick="toggleVisionTTS()"></button>
+                        </div>
+                        <div class="tiny" style="margin-bottom: 10px;">无需上传文件，系统将自动从 K 线数据生成图像快照并分析。</div>
                         <div class="ctrl-row">
-                            <button class="tab" style="padding: 8px 14px;" onclick="runVLMImage()">图像理解</button>
-                            <button class="tab" style="padding: 8px 14px;" onclick="runVLMKline()">K线专项分析</button>
+                            <button class="tab" style="padding: 8px 14px;" onclick="runVLMKlineAuto('zheshang')">分析浙商K线</button>
+                            <button class="tab" style="padding: 8px 14px;" onclick="runVLMKlineAuto('minsheng')">分析民生K线</button>
                         </div>
                         <div id="vlmImageOut" class="out">等待执行...</div>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-header"><div class="card-title">VLM 市场分析</div></div>
-                        <button class="tab" style="padding: 8px 14px;" onclick="runVLMMarket()">生成市场分析</button>
-                        <div id="vlmMarketOut" class="out">等待执行...</div>
                     </div>
                 </div>
             </div>
@@ -331,13 +606,70 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <input id="briefTitle" class="input" type="text" value="积存金行情快报" />
                     <div class="ctrl-row">
                         <button class="tab" style="padding: 8px 14px;" onclick="generateBriefImage()">生成快报图</button>
+                        <button class="tab" style="padding: 8px 14px;" onclick="generateBriefImageAndDownload()">生成并下载</button>
+                        <button class="tab" style="padding: 8px 14px;" onclick="previewBriefNews()">预览新闻源</button>
                         <a id="briefDownload" href="#" target="_blank" rel="noopener" class="tiny">打开最新图片</a>
+                    </div>
+                    <div class="tiny" style="margin-top: 8px;">
+                        <label><input id="briefUseExternalNews" type="checkbox" checked /> 启用联网快讯（含金十分类 + 联网搜索）</label>
                     </div>
                     <div id="briefOut" class="out">等待执行...</div>
                     <img id="briefImage" class="img-preview" style="display:none;" />
                 </div>
             </div>
         </div>
+    </div>
+
+    <div id="tradeModalMask" class="trade-modal-mask" onclick="closeTradeModal()">
+        <div class="trade-modal" onclick="event.stopPropagation()">
+            <div class="trade-modal-header">
+                <div class="trade-modal-title" id="tradeModalTitle">手动模拟交易</div>
+                <button class="trade-modal-close" type="button" onclick="closeTradeModal()">×</button>
+            </div>
+            <div class="trade-modal-body">
+                <div class="trade-quote">
+                    <div class="trade-quote-main" id="tradeModalPrice">-- 元/克</div>
+                    <div class="trade-quote-sub" id="tradeModalQuoteMeta">最新行情: --</div>
+                </div>
+                <div class="trade-modal-field">
+                    <label for="tradeModalGrams">输入交易克数</label>
+                    <input id="tradeModalGrams" class="input" type="number" min="0.01" step="0.01" value="1" />
+                </div>
+                <div class="trade-modal-actions">
+                    <button class="trade-op-btn" type="button" onclick="closeTradeModal()">取消</button>
+                    <button class="trade-op-btn" id="tradeModalConfirm" type="button" onclick="confirmTradeFromModal()">确认</button>
+                </div>
+                <div class="trade-modal-msg" id="tradeModalMsg"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="rechargeModalMask" class="trade-modal-mask" onclick="closeRechargeModal()">
+        <div class="trade-modal" onclick="event.stopPropagation()">
+            <div class="trade-modal-header">
+                <div class="trade-modal-title" id="rechargeModalTitle">增加余额</div>
+                <button class="trade-modal-close" type="button" onclick="closeRechargeModal()">×</button>
+            </div>
+            <div class="trade-modal-body">
+                <div class="trade-quote">
+                    <div class="trade-quote-main" id="rechargeBalanceNow">-- 元</div>
+                    <div class="trade-quote-sub" id="rechargeBalanceMeta">当前账户余额</div>
+                </div>
+                <div class="trade-modal-field">
+                    <label for="rechargeAmount">输入充值金额（元）</label>
+                    <input id="rechargeAmount" class="input" type="number" min="0.01" step="0.01" value="1000" />
+                </div>
+                <div class="trade-modal-actions">
+                    <button class="trade-op-btn" type="button" onclick="closeRechargeModal()">取消</button>
+                    <button class="trade-op-btn trade-op-topup" type="button" onclick="confirmRecharge()">确认增加</button>
+                </div>
+                <div class="trade-modal-msg" id="rechargeModalMsg"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="chatImagePreviewMask" class="chat-image-preview-mask" onclick="closeChatImagePreview()">
+        <img id="chatImagePreviewLarge" class="chat-image-preview-large" alt="图片预览" onclick="event.stopPropagation()" />
     </div>
     
     <script>
@@ -352,6 +684,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const URL_PARAMS = new URLSearchParams(window.location.search);
         const QUERY_API_BASE = (URL_PARAMS.get('api_base') || '').trim();
         const QUERY_WS_BASE = (URL_PARAMS.get('ws_base') || '').trim();
+        const DASHBOARD_PORTS = DASHBOARD_PORTS_JSON;
+        const DASHBOARD_API_PORT = Number(DASHBOARD_PORTS.api || 8080);
+        const DASHBOARD_WS_PORT = Number(DASHBOARD_PORTS.websocket || 8765);
 
         function isLoopbackUrl(raw) {
             if (!raw) return false;
@@ -366,15 +701,37 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const CONFIG_API_BASE = (window.__API_BASE__ || '').trim();
         const REMOTE_PAGE = !(HOST === '127.0.0.1' || HOST === 'localhost');
         const SHOULD_IGNORE_CONFIG_API = REMOTE_PAGE && isLoopbackUrl(CONFIG_API_BASE);
-        const API = QUERY_API_BASE || (!SHOULD_IGNORE_CONFIG_API && CONFIG_API_BASE) || (isLikelyGatewayPort ? CURRENT_ORIGIN : `${PROTOCOL}//${HOST}:8080`);
+        const API_DIRECT = `${PROTOCOL}//${HOST}:${DASHBOARD_API_PORT}`;
+        const API = QUERY_API_BASE || (!SHOULD_IGNORE_CONFIG_API && CONFIG_API_BASE) || API_DIRECT;
 
         const CONFIG_WS_BASE = (window.__WS_BASE__ || '').trim();
         const WS_BASE = QUERY_WS_BASE || CONFIG_WS_BASE;
         const DISABLE_AI_SIDEBAR = URL_PARAMS.get('embed') === '1' || URL_PARAMS.get('hide_ai') === '1';
         let recognition = null;
         let listening = false;
+        let micAbortRequested = false;
+        let micFinalTranscript = '';
         let aiInitialized = false;
         let aiCollapsed = false;
+        let activeTradeContext = null;
+        let activeRechargeBank = null;
+        let includeFeeInUnrealized = false;
+        let ttsEnabled = true;
+        let ttsBusy = false;
+        let ttsQueue = Promise.resolve();
+        let ttsAbortController = null;
+        let ttsActiveRequestId = '';
+        let ttsAudioPlayer = null;
+        let visionTtsEnabled = true;
+        let visionTtsBusy = false;
+        let visionTtsAbortController = null;
+        let visionTtsActiveRequestId = '';
+        let visionTtsAudioPlayer = null;
+        let chatComposerBound = false;
+        let chatSelectedImageFile = null;
+        let chatUploadPreviewUrl = null;
+        let chatStreamAbortController = null;
+        let chatStreaming = false;
 // Realtime Charts Variables
         let rtCharts = {};
         const maxPoints = 60;
@@ -462,6 +819,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }
         }
 
+        function updateAISidebarMetrics() {
+            if (DISABLE_AI_SIDEBAR) return;
+            const header = document.querySelector('.header');
+            const root = document.documentElement;
+            if (!header || !root) return;
+
+            const headerHeight = Math.ceil(header.getBoundingClientRect().height || 0);
+            const top = Math.max(92, headerHeight + 10);
+            root.style.setProperty('--ai-sidebar-top', `${top}px`);
+        }
+
         function toggleAISidebar() {
             if (DISABLE_AI_SIDEBAR) return;
             aiCollapsed = !aiCollapsed;
@@ -475,9 +843,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const labels = { asr: 'ASR', tts: 'TTS', vlm: 'VLM', image_generation: 'IMG' };
             const ok = ready === true;
             const msg = String(message || '').toLowerCase();
-            const loading = !ok && (msg.includes('not loaded') || msg.includes('加载中') || msg.includes('loading'));
+            const loading = !ok && (msg.includes('loading') || msg.includes('加载中') || msg.includes('初始化中') || msg.includes('initializing'));
+            const notLoaded = !ok && (msg.includes('not loaded') || msg.includes('未加载') || msg.includes('未初始化'));
             tag.className = 'model-tag ' + (ok ? 'tag-ready' : (loading ? 'tag-loading' : 'tag-down'));
-            tag.textContent = `${labels[key] || key.toUpperCase()}: ${ok ? '就绪' : (loading ? '加载中' : '异常')}`;
+            tag.textContent = `${labels[key] || key.toUpperCase()}: ${ok ? '就绪' : (loading ? '加载中' : (notLoaded ? '未加载' : '异常'))}`;
             if (message) tag.title = String(message);
             else tag.removeAttribute('title');
         }
@@ -501,23 +870,461 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (target) target.classList.add('active');
         }
 
-        function addChat(role, content) {
+        function loadingMarkup(text) {
+            return `<span class="loading-inline"><span class="spinner"></span>${String(text || '处理中...')}</span>`;
+        }
+
+        function escapeHtml(text) {
+            return String(text || '').replace(/[&<>"']/g, (ch) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[ch]));
+        }
+
+        function setOutLoading(outEl, text) {
+            if (!outEl) return;
+            outEl.innerHTML = loadingMarkup(text || '处理中...');
+        }
+
+        function renderButtonIcon(kind) {
+            const icons = {
+                speakerOn: `<svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"></path><path d="M15 9a5 5 0 0 1 0 6"></path><path d="M18 7a8 8 0 0 1 0 10"></path></svg>`,
+                speakerOff: `<svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"></path><path d="M22 2 2 22"></path></svg>`,
+                mic: `<svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><path d="M12 18v3"></path><path d="M8 21h8"></path></svg>`,
+                stop: `<svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><rect x="9" y="9" width="6" height="6" rx="1"></rect></svg>`,
+                plus: `<svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>`
+            };
+            return `<span class="btn-icon-wrap">${icons[kind] || ''}</span>`;
+        }
+
+        function setButtonIcon(btn, kind) {
+            if (!btn) return;
+            btn.innerHTML = renderButtonIcon(kind);
+        }
+
+        function setButtonLabel(btn, labelText) {
+            if (!btn) return;
+            btn.innerHTML = `<span class="btn-label">${labelText}</span>`;
+        }
+
+        function cancelActiveTTS() {
+            const rid = ttsActiveRequestId;
+            ttsActiveRequestId = '';
+
+            if (ttsAbortController) {
+                try { ttsAbortController.abort(); } catch (_) {}
+                ttsAbortController = null;
+            }
+            if (rid) {
+                fetch(`${API}/api/ai/tts/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ request_id: rid })
+                }).catch(() => {});
+            }
+            if (ttsAudioPlayer) {
+                try {
+                    ttsAudioPlayer.pause();
+                    ttsAudioPlayer.currentTime = 0;
+                } catch (_) {}
+            }
+            ttsBusy = false;
+            updateTTSButton();
+        }
+
+        function updateTTSButton() {
+            const btn = document.getElementById('ttsToggleBtn');
+            if (!btn) return;
+
+            btn.className = 'voice-toggle-btn';
+            if (ttsEnabled) btn.classList.add('active');
+            else btn.classList.add('muted');
+            if (ttsBusy) btn.classList.add('busy');
+
+            setButtonIcon(btn, ttsEnabled ? 'speakerOn' : 'speakerOff');
+            btn.title = ttsEnabled ? '点击关闭回复语音播报' : '点击开启回复语音播报';
+        }
+
+        function updateVisionTTSButton() {
+            const btn = document.getElementById('visionTtsToggleBtn');
+            if (!btn) return;
+
+            btn.className = 'voice-toggle-btn';
+            if (visionTtsEnabled) btn.classList.add('active');
+            else btn.classList.add('muted');
+            if (visionTtsBusy) btn.classList.add('busy');
+
+            setButtonIcon(btn, visionTtsEnabled ? 'speakerOn' : 'speakerOff');
+            btn.title = visionTtsEnabled ? '点击关闭视觉分析语音播报' : '点击开启视觉分析语音播报';
+        }
+
+        function cancelVisionTTS() {
+            const rid = visionTtsActiveRequestId;
+            visionTtsActiveRequestId = '';
+
+            if (visionTtsAbortController) {
+                try { visionTtsAbortController.abort(); } catch (_) {}
+                visionTtsAbortController = null;
+            }
+            if (rid) {
+                fetch(`${API}/api/ai/tts/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ request_id: rid })
+                }).catch(() => {});
+            }
+            if (visionTtsAudioPlayer) {
+                try {
+                    visionTtsAudioPlayer.pause();
+                    visionTtsAudioPlayer.currentTime = 0;
+                } catch (_) {}
+            }
+            visionTtsBusy = false;
+            updateVisionTTSButton();
+        }
+
+        function toggleVisionTTS() {
+            visionTtsEnabled = !visionTtsEnabled;
+            if (!visionTtsEnabled) {
+                cancelVisionTTS();
+            }
+            updateVisionTTSButton();
+        }
+
+        async function playVisionTTS(rawText) {
+            if (!visionTtsEnabled) return;
+            const text = toSpeechText(rawText);
+            if (!text) return;
+
+            visionTtsBusy = true;
+            updateVisionTTSButton();
+
+            const controller = new AbortController();
+            visionTtsAbortController = controller;
+            const requestId = `vision_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+            visionTtsActiveRequestId = requestId;
+
+            try {
+                const r = await fetch(`${API}/api/ai/tts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, fast: true, request_id: requestId }),
+                    signal: controller.signal,
+                });
+                const d = await r.json();
+                if (!d.success || !d.audio_url) return;
+
+                if (!visionTtsEnabled || visionTtsActiveRequestId !== requestId) return;
+                if (!visionTtsAudioPlayer) visionTtsAudioPlayer = new Audio();
+                visionTtsAudioPlayer.pause();
+                visionTtsAudioPlayer.src = `${API}${d.audio_url}`;
+
+                await new Promise((resolve, reject) => {
+                    visionTtsAudioPlayer.onended = () => resolve();
+                    visionTtsAudioPlayer.onerror = () => reject(new Error('audio playback error'));
+                    const p = visionTtsAudioPlayer.play();
+                    if (p && typeof p.then === 'function') p.catch(reject);
+                });
+            } catch (_) {
+            } finally {
+                if (visionTtsAbortController === controller) visionTtsAbortController = null;
+                if (visionTtsActiveRequestId === requestId) visionTtsActiveRequestId = '';
+                visionTtsBusy = false;
+                updateVisionTTSButton();
+            }
+        }
+
+        async function speakVisionText(text) {
+            if (!visionTtsEnabled) return;
+            cancelVisionTTS();
+            return playVisionTTS(text).catch(() => {});
+        }
+
+        function toggleTTS() {
+            ttsEnabled = !ttsEnabled;
+            if (!ttsEnabled) {
+                cancelActiveTTS();
+                ttsQueue = Promise.resolve();
+            }
+            updateTTSButton();
+        }
+
+        function toSpeechText(text) {
+            const src = String(text || '').trim();
+            if (!src) return '';
+            let cleaned = src
+                .replace(/你的问题\s*[:：].*/g, '')
+                .replace(/图片理解\s*[:：]/g, '图片分析：')
+                .replace(/\\n+/g, '，')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (cleaned.length > 96) cleaned = cleaned.slice(0, 96) + '。';
+            return cleaned;
+        }
+
+        async function playTTSOnce(rawText) {
+            if (!ttsEnabled) return;
+            const text = toSpeechText(rawText);
+            if (!text) return;
+
+            ttsBusy = true;
+            updateTTSButton();
+            const controller = new AbortController();
+            ttsAbortController = controller;
+            const requestId = `${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+            ttsActiveRequestId = requestId;
+
+            try {
+                const r = await fetch(`${API}/api/ai/tts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, fast: true, request_id: requestId }),
+                    signal: controller.signal,
+                });
+                const d = await r.json();
+                if (!d.success || !d.audio_url) return;
+
+                if (!ttsEnabled || ttsActiveRequestId !== requestId) return;
+                if (!ttsAudioPlayer) ttsAudioPlayer = new Audio();
+                ttsAudioPlayer.pause();
+                ttsAudioPlayer.src = `${API}${d.audio_url}`;
+
+                await new Promise((resolve, reject) => {
+                    ttsAudioPlayer.onended = () => resolve();
+                    ttsAudioPlayer.onerror = () => reject(new Error('audio playback error'));
+                    const p = ttsAudioPlayer.play();
+                    if (p && typeof p.then === 'function') p.catch(reject);
+                });
+            } catch (_) {
+            } finally {
+                if (ttsAbortController === controller) ttsAbortController = null;
+                if (ttsActiveRequestId === requestId) ttsActiveRequestId = '';
+                ttsBusy = false;
+                updateTTSButton();
+            }
+        }
+
+        function updateMicButtonUI() {
+            const btn = document.getElementById('micBtn');
+            if (!btn) return;
+            btn.className = 'composer-icon-btn' + (listening ? ' recording' : '');
+            setButtonIcon(btn, listening ? 'stop' : 'mic');
+            btn.title = listening ? '点击停止录音' : '开始语音输入';
+        }
+
+        function hasChatImageSelected() {
+            return !!chatSelectedImageFile;
+        }
+
+        function updateChatUploadPreview() {
+            const imageInput = document.getElementById('chatImage');
+            const preview = document.getElementById('chatUploadPreview');
+            const nameEl = document.getElementById('chatUploadName');
+            const thumbEl = document.getElementById('chatUploadThumb');
+            if (!imageInput || !preview || !nameEl || !thumbEl) return;
+
+            const file = chatSelectedImageFile || (imageInput.files && imageInput.files[0]);
+            if (file) {
+                chatSelectedImageFile = file;
+                if (chatUploadPreviewUrl) {
+                    try { URL.revokeObjectURL(chatUploadPreviewUrl); } catch (_) {}
+                    chatUploadPreviewUrl = null;
+                }
+                chatUploadPreviewUrl = URL.createObjectURL(file);
+                thumbEl.src = chatUploadPreviewUrl;
+                nameEl.textContent = file.name || 'clipboard-image.png';
+                preview.style.display = 'flex';
+            } else {
+                if (chatUploadPreviewUrl) {
+                    try { URL.revokeObjectURL(chatUploadPreviewUrl); } catch (_) {}
+                    chatUploadPreviewUrl = null;
+                }
+                thumbEl.removeAttribute('src');
+                preview.style.display = 'none';
+            }
+        }
+
+        function openChatImagePreview() {
+            const mask = document.getElementById('chatImagePreviewMask');
+            const large = document.getElementById('chatImagePreviewLarge');
+            if (!mask || !large || !chatUploadPreviewUrl) return;
+            large.src = chatUploadPreviewUrl;
+            mask.style.display = 'flex';
+        }
+
+        function closeChatImagePreview() {
+            const mask = document.getElementById('chatImagePreviewMask');
+            const large = document.getElementById('chatImagePreviewLarge');
+            if (mask) mask.style.display = 'none';
+            if (large) large.removeAttribute('src');
+        }
+
+        function updateChatStreamingState(active) {
+            chatStreaming = !!active;
+            const stopBtn = document.getElementById('streamStopBtn');
+            const actionBtn = document.getElementById('chatActionBtn');
+            const input = document.getElementById('chatInput');
+            if (stopBtn) {
+                stopBtn.style.display = chatStreaming ? 'inline-flex' : 'none';
+                setButtonIcon(stopBtn, 'stop');
+            }
+            if (actionBtn) {
+                actionBtn.disabled = chatStreaming;
+                actionBtn.classList.toggle('muted', chatStreaming);
+            }
+            if (input) input.disabled = chatStreaming;
+        }
+
+        function stopChatStream() {
+            if (chatStreamAbortController) {
+                try { chatStreamAbortController.abort(); } catch (_) {}
+            }
+            cancelActiveTTS();
+        }
+
+        function updateChatActionButton() {
+            const btn = document.getElementById('chatActionBtn');
+            const input = document.getElementById('chatInput');
+            if (!btn || !input) return;
+
+            const hasText = (input.value || '').trim().length > 0;
+            const hasImage = hasChatImageSelected();
+            if (hasText || hasImage) {
+                btn.className = 'composer-icon-btn send';
+                setButtonLabel(btn, '发送');
+                btn.title = '发送消息';
+            } else {
+                btn.className = 'composer-icon-btn';
+                setButtonIcon(btn, 'plus');
+                btn.title = '添加图片';
+            }
+        }
+
+        function clearChatImageSelection() {
+            const imageInput = document.getElementById('chatImage');
+            chatSelectedImageFile = null;
+            if (imageInput) imageInput.value = '';
+            if (chatUploadPreviewUrl) {
+                try { URL.revokeObjectURL(chatUploadPreviewUrl); } catch (_) {}
+                chatUploadPreviewUrl = null;
+            }
+            updateChatUploadPreview();
+            updateChatActionButton();
+        }
+
+        function setChatImageFile(file) {
+            const imageInput = document.getElementById('chatImage');
+            if (!imageInput || !file) return;
+            chatSelectedImageFile = file;
+            try {
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                imageInput.files = dt.files;
+            } catch (_) {
+            }
+            updateChatUploadPreview();
+            updateChatActionButton();
+        }
+
+        function handleChatAction() {
+            const input = document.getElementById('chatInput');
+            const imageInput = document.getElementById('chatImage');
+            if (!input || !imageInput) return;
+
+            const hasText = (input.value || '').trim().length > 0;
+            const hasImage = hasChatImageSelected();
+            if (hasText || hasImage) {
+                sendChat();
+                return;
+            }
+            imageInput.click();
+        }
+
+        function bindChatComposerEvents() {
+            if (chatComposerBound) return;
+            const input = document.getElementById('chatInput');
+            const imageInput = document.getElementById('chatImage');
+            const composer = document.querySelector('.chat-composer');
+            const thumbEl = document.getElementById('chatUploadThumb');
+            if (!input || !imageInput || !composer) return;
+
+            chatComposerBound = true;
+            input.addEventListener('input', () => updateChatActionButton());
+            input.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    const hasText = (input.value || '').trim().length > 0;
+                    if (hasText || hasChatImageSelected()) {
+                        handleChatAction();
+                    }
+                }
+            });
+            input.addEventListener('paste', (event) => {
+                const items = event.clipboardData && event.clipboardData.items;
+                if (!items) return;
+                for (let i = 0; i < items.length; i += 1) {
+                    const item = items[i];
+                    if (item.type && item.type.startsWith('image/')) {
+                        const blob = item.getAsFile();
+                        if (!blob) return;
+                        const file = new File([blob], `paste_${Date.now()}.png`, { type: blob.type || 'image/png' });
+                        setChatImageFile(file);
+                        event.preventDefault();
+                        return;
+                    }
+                }
+            });
+            imageInput.addEventListener('change', () => {
+                chatSelectedImageFile = (imageInput.files && imageInput.files[0]) || null;
+                updateChatUploadPreview();
+                updateChatActionButton();
+            });
+            if (thumbEl) {
+                thumbEl.addEventListener('click', openChatImagePreview);
+            }
+
+            composer.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                composer.classList.add('dragover');
+            });
+            composer.addEventListener('dragleave', () => {
+                composer.classList.remove('dragover');
+            });
+            composer.addEventListener('drop', (event) => {
+                event.preventDefault();
+                composer.classList.remove('dragover');
+                const files = event.dataTransfer && event.dataTransfer.files;
+                if (!files || !files.length) return;
+                const firstImage = Array.from(files).find((f) => String(f.type || '').startsWith('image/'));
+                if (!firstImage) return;
+                setChatImageFile(firstImage);
+            });
+        }
+
+        function addChat(role, content, html = false) {
             const box = document.getElementById('chatWindow');
-            if (!box) return;
+            if (!box) return null;
             const item = document.createElement('div');
-            item.className = 'chat-item';
+            const roleText = String(role || '');
+            const roleClass = roleText === '你' ? 'user' : (roleText === 'AI' ? 'ai' : 'system');
+            item.className = `chat-item ${roleClass}`;
             const roleNode = document.createElement('div');
             roleNode.className = 'role';
-            roleNode.textContent = String(role || '');
+            roleNode.textContent = roleText;
 
             const bubbleNode = document.createElement('div');
             bubbleNode.className = 'bubble';
-            bubbleNode.textContent = String(content || '');
+            if (html) bubbleNode.innerHTML = String(content || '');
+            else bubbleNode.textContent = String(content || '');
 
             item.appendChild(roleNode);
             item.appendChild(bubbleNode);
             box.appendChild(item);
             box.scrollTop = box.scrollHeight;
+            return { item, bubble: bubbleNode };
         }
 
         function renderCaps(caps) {
@@ -530,12 +1337,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         async function loadCapabilities() {
             setAllModelTagsLoading();
             try {
-                const r = await fetch(`${API}/api/ai/capabilities?fast=1`);
+                const r = await fetch(`${API}/api/ai/capabilities?fast=false`);
                 const d = await r.json();
                 if (!d.success) throw new Error(d.error || 'unknown error');
                 renderCaps(d.capabilities || {});
                 const hint = document.getElementById('aiContextHint');
-                if (hint) hint.textContent = 'OpenClaw 信息流已接入，模型状态灯会自动刷新。';
+                if (hint) hint.textContent = '对话优先走 VL 模型分析，模型状态灯会自动刷新。';
             } catch (e) {
                 ['asr', 'tts', 'vlm', 'image_generation'].forEach((key) => setModelTagState(key, false, e.message));
                 const hint = document.getElementById('aiContextHint');
@@ -543,20 +1350,408 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }
         }
 
-        async function speakText(text) {
-            const toggle = document.getElementById('ttsToggle');
-            if (!toggle || !toggle.checked || !text) return;
+        async function fetchCanonicalDashboardData() {
+            const candidates = [
+                `${API}/api/dashboard`,
+                '/api/data'
+            ];
+
+            let lastError = null;
+            for (const url of candidates) {
+                try {
+                    const r = await fetch(url);
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    const data = await r.json();
+                    if (!data || !data.prices || !data.positions) {
+                        throw new Error('invalid dashboard payload');
+                    }
+                    return data;
+                } catch (e) {
+                    lastError = e;
+                }
+            }
+
+            throw (lastError || new Error('dashboard data unavailable'));
+        }
+
+        async function refreshDashboardData(snapshot = null) {
+            const data = snapshot || await fetchCanonicalDashboardData();
+            currentData = data;
+            updatePnLToggleButton();
+            renderStats();
+            renderPrices();
+            renderTrades();
+            updateRealtimeCharts();
+            document.getElementById('updateTime').textContent = '更新于: ' + formatDateTime(data.timestamp);
+            return data;
+        }
+
+        function getBankLabel(bank) {
+            return bank === 'zheshang' ? '浙商积存金' : '民生积存金';
+        }
+
+        function getActionLabel(action) {
+            return action === 'BUY' ? '买入' : '卖出';
+        }
+
+        function updatePnLToggleButton() {
+            const btn = document.getElementById('pnlFeeToggleBtn');
+            if (!btn) return;
+            btn.classList.toggle('active', includeFeeInUnrealized);
+            btn.textContent = includeFeeInUnrealized ? '浮动盈亏：计入预估卖出手续费(0.4%)' : '浮动盈亏：不计入预估卖出手续费';
+        }
+
+        function togglePnLFeeMode(forceValue = null) {
+            if (typeof forceValue === 'boolean') includeFeeInUnrealized = forceValue;
+            else includeFeeInUnrealized = !includeFeeInUnrealized;
+
             try {
-                const r = await fetch(`${API}/api/ai/tts`, {
+                localStorage.setItem('dashboard.pnlIncludeFee', includeFeeInUnrealized ? '1' : '0');
+            } catch (_) {
+            }
+
+            updatePnLToggleButton();
+            renderPrices();
+        }
+
+        function openRechargeModal(bank) {
+            activeRechargeBank = bank;
+            const maskEl = document.getElementById('rechargeModalMask');
+            const titleEl = document.getElementById('rechargeModalTitle');
+            const nowEl = document.getElementById('rechargeBalanceNow');
+            const metaEl = document.getElementById('rechargeBalanceMeta');
+            const amountEl = document.getElementById('rechargeAmount');
+            const msgEl = document.getElementById('rechargeModalMsg');
+            if (!maskEl || !titleEl || !nowEl || !metaEl || !amountEl || !msgEl) return;
+
+            const pos = currentData.positions?.[bank] || {};
+            const currentBalance = Number(pos.balance || 0);
+            titleEl.textContent = `${getBankLabel(bank)} · 增加余额`;
+            nowEl.textContent = `${currentBalance.toFixed(2)} 元`;
+            metaEl.textContent = '当前账户余额';
+            msgEl.textContent = '';
+            amountEl.value = '1000';
+            maskEl.style.display = 'flex';
+            amountEl.focus();
+            amountEl.select();
+        }
+
+        function closeRechargeModal() {
+            const maskEl = document.getElementById('rechargeModalMask');
+            if (maskEl) maskEl.style.display = 'none';
+            activeRechargeBank = null;
+        }
+
+        async function confirmRecharge() {
+            if (!activeRechargeBank) return;
+            const amountEl = document.getElementById('rechargeAmount');
+            const msgEl = document.getElementById('rechargeModalMsg');
+            if (!amountEl || !msgEl) return;
+
+            const amount = Number.parseFloat(amountEl.value || '0');
+            if (!Number.isFinite(amount) || amount <= 0) {
+                msgEl.textContent = '请输入大于 0 的充值金额。';
+                return;
+            }
+
+            msgEl.textContent = '充值处理中...';
+            try {
+                const r = await fetch(`${API}/api/account/recharge`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text })
+                    body: JSON.stringify({ bank: activeRechargeBank, amount })
                 });
                 const d = await r.json();
-                if (!d.success) return;
-                const audio = new Audio(`${API}${d.audio_url}`);
-                audio.play().catch(() => {});
-            } catch (_) {}
+                if (!d.success) throw new Error(d.error || '充值失败');
+                await refreshDashboardData(d.snapshot || null);
+                msgEl.textContent = d.message || '余额增加成功';
+            } catch (e) {
+                msgEl.textContent = `失败: ${e.message}`;
+            }
+        }
+
+        function updateTradeModalQuote() {
+            const priceEl = document.getElementById('tradeModalPrice');
+            const metaEl = document.getElementById('tradeModalQuoteMeta');
+            if (!priceEl || !metaEl || !activeTradeContext) return;
+
+            const priceInfo = (currentData.prices || {})[activeTradeContext.bank] || {};
+            const price = Number(priceInfo.price || 0);
+            const changeRate = priceInfo.change_rate || '--';
+            const changeAmt = priceInfo.change_amt || '--';
+            const ts = priceInfo.datetime || currentData.timestamp || '--';
+            priceEl.textContent = `${price > 0 ? price.toFixed(2) : '--'} 元/克`;
+            metaEl.textContent = `最新行情: ${changeAmt} (${changeRate}) · 更新时间 ${formatDateTime(ts)}`;
+        }
+
+        function openTradeModal(bank, action) {
+            activeTradeContext = {
+                bank,
+                action: String(action || 'BUY').toUpperCase()
+            };
+
+            const titleEl = document.getElementById('tradeModalTitle');
+            const confirmEl = document.getElementById('tradeModalConfirm');
+            const gramsEl = document.getElementById('tradeModalGrams');
+            const msgEl = document.getElementById('tradeModalMsg');
+            const maskEl = document.getElementById('tradeModalMask');
+            if (!titleEl || !confirmEl || !gramsEl || !msgEl || !maskEl) return;
+
+            const actionLabel = getActionLabel(activeTradeContext.action);
+            titleEl.textContent = `${getBankLabel(bank)} · ${actionLabel}`;
+            confirmEl.textContent = `确认${actionLabel}`;
+            confirmEl.className = 'trade-op-btn ' + (activeTradeContext.action === 'BUY' ? 'trade-op-buy' : 'trade-op-sell');
+            msgEl.textContent = '';
+            gramsEl.value = '1';
+            updateTradeModalQuote();
+            maskEl.style.display = 'flex';
+            gramsEl.focus();
+            gramsEl.select();
+        }
+
+        function closeTradeModal() {
+            const maskEl = document.getElementById('tradeModalMask');
+            if (maskEl) maskEl.style.display = 'none';
+            activeTradeContext = null;
+        }
+
+        async function submitManualTrade(bank, action, grams) {
+            const r = await fetch(`${API}/api/trade/manual`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bank, action, grams })
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || '模拟交易失败');
+            await refreshDashboardData(d.snapshot || null);
+            return d;
+        }
+
+        async function confirmTradeFromModal() {
+            if (!activeTradeContext) return;
+
+            const gramsEl = document.getElementById('tradeModalGrams');
+            const msgEl = document.getElementById('tradeModalMsg');
+            if (!gramsEl || !msgEl) return;
+
+            const grams = Number.parseFloat(gramsEl.value || '0');
+            if (!Number.isFinite(grams) || grams <= 0) {
+                msgEl.textContent = '请输入大于 0 的克数。';
+                return;
+            }
+
+            const bank = activeTradeContext.bank;
+            const action = activeTradeContext.action;
+            const actionLabel = getActionLabel(action);
+            msgEl.textContent = `${actionLabel}执行中...`;
+
+            try {
+                const d = await submitManualTrade(bank, action, grams);
+                const trade = d.trade || {};
+                msgEl.textContent = [
+                    d.message || '操作成功',
+                    `${getBankLabel(bank)} ${actionLabel} ${Number(trade.grams || grams).toFixed(2)} 克 @ ${Number(trade.price || 0).toFixed(2)} 元/克`,
+                    trade.fee ? `手续费: ${Number(trade.fee).toFixed(2)} 元` : '',
+                    trade.profit !== undefined ? `盈亏: ${(Number(trade.profit || 0) >= 0 ? '+' : '')}${Number(trade.profit || 0).toFixed(2)} 元` : ''
+                ].filter(Boolean).join('\\n');
+                updateTradeModalQuote();
+            } catch (e) {
+                msgEl.textContent = `失败: ${e.message}`;
+            }
+        }
+
+        async function speakText(text) {
+            if (!ttsEnabled) return;
+            cancelActiveTTS();
+            ttsQueue = playTTSOnce(text).catch(() => {});
+            return ttsQueue;
+        }
+
+        function appendChatDelta(pending, text) {
+            if (!pending || !pending.bubble) return;
+            const next = String(text || '');
+            if (!next) return;
+            pending.bubble.textContent = (pending.bubble.textContent || '') + next;
+            const box = document.getElementById('chatWindow');
+            if (box) box.scrollTop = box.scrollHeight;
+        }
+
+        async function requestChatOnce(message, selectedImage) {
+            let r;
+            if (selectedImage) {
+                const fd = new FormData();
+                fd.append('message', message);
+                fd.append('image', selectedImage, selectedImage.name || 'chat-image.png');
+                r = await fetch(`${API}/api/ai/chat`, { method: 'POST', body: fd });
+            } else {
+                r = await fetch(`${API}/api/ai/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+            }
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || d.message || `HTTP ${r.status}`);
+            return d;
+        }
+
+        async function requestChatStream(message, selectedImage, pending, options = {}) {
+            const signal = options && options.signal;
+            let r;
+            if (selectedImage) {
+                const fd = new FormData();
+                fd.append('message', message);
+                fd.append('image', selectedImage, selectedImage.name || 'chat-image.png');
+                r = await fetch(`${API}/api/ai/chat/stream`, { method: 'POST', body: fd, signal });
+            } else {
+                r = await fetch(`${API}/api/ai/chat/stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message }),
+                    signal
+                });
+            }
+
+            if (!r.ok) {
+                let errMsg = `HTTP ${r.status}`;
+                try {
+                    const d = await r.json();
+                    errMsg = d.error || d.message || errMsg;
+                } catch (_) {
+                }
+                throw new Error(errMsg);
+            }
+
+            const ctype = (r.headers.get('content-type') || '').toLowerCase();
+            if (!ctype.includes('text/event-stream')) {
+                throw new Error('服务端未返回流式响应');
+            }
+            if (!r.body || !r.body.getReader) {
+                throw new Error('当前环境不支持流式读取');
+            }
+
+            const reader = r.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let finalReply = '';
+            let imageUrl = null;
+            let done = false;
+            let pendingDelta = '';
+            let rafId = 0;
+
+            const abortError = () => {
+                const e = new Error('用户已停止生成');
+                e.name = 'AbortError';
+                return e;
+            };
+
+            const flushDelta = () => {
+                if (!pendingDelta) return;
+                const chunk = pendingDelta;
+                pendingDelta = '';
+                appendChatDelta(pending, chunk);
+            };
+
+            const scheduleFlush = () => {
+                if (rafId) return;
+                rafId = window.requestAnimationFrame(() => {
+                    rafId = 0;
+                    flushDelta();
+                });
+            };
+
+            const handleAbort = () => {
+                try { reader.cancel(); } catch (_) {}
+            };
+
+            if (signal) {
+                if (signal.aborted) throw abortError();
+                signal.addEventListener('abort', handleAbort, { once: true });
+            }
+
+            const handleSSE = (block) => {
+                const lines = block.split('\\n');
+                let eventName = 'message';
+                const dataLines = [];
+                for (const line of lines) {
+                    if (line.startsWith('event:')) {
+                        eventName = line.slice(6).trim();
+                    } else if (line.startsWith('data:')) {
+                        dataLines.push(line.slice(5).trimStart());
+                    }
+                }
+                if (!dataLines.length) return;
+
+                let payload = {};
+                try {
+                    payload = JSON.parse(dataLines.join('\\n'));
+                } catch (_) {
+                    return;
+                }
+
+                if (eventName === 'delta') {
+                    const chunk = String(payload.text || '');
+                    if (chunk) {
+                        finalReply += chunk;
+                        pendingDelta += chunk;
+                        if (pendingDelta.length >= 48) flushDelta();
+                        else scheduleFlush();
+                    }
+                    return;
+                }
+                if (eventName === 'done') {
+                    imageUrl = payload.image_url || null;
+                    if (!finalReply && payload.reply) {
+                        finalReply = String(payload.reply);
+                        pending.bubble.textContent = finalReply;
+                    }
+                    done = true;
+                    return;
+                }
+                if (eventName === 'error') {
+                    throw new Error(payload.error || '流式接口返回错误');
+                }
+            };
+
+            try {
+                while (true) {
+                    const { value, done: streamDone } = await reader.read();
+                    if (streamDone) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    buffer = buffer.replace(/\\r\\n/g, '\\n');
+
+                    let idx = buffer.indexOf('\\n\\n');
+                    while (idx !== -1) {
+                        const block = buffer.slice(0, idx).trim();
+                        buffer = buffer.slice(idx + 2);
+                        if (block) handleSSE(block);
+                        idx = buffer.indexOf('\\n\\n');
+                    }
+                }
+
+                if (!done && buffer.trim()) {
+                    handleSSE(buffer.trim());
+                }
+
+                if (signal && signal.aborted) {
+                    throw abortError();
+                }
+
+                if (rafId) {
+                    window.cancelAnimationFrame(rafId);
+                    rafId = 0;
+                }
+                flushDelta();
+
+                if (!finalReply) {
+                    throw new Error('流式返回为空');
+                }
+                return { reply: finalReply, image_url: imageUrl };
+            } finally {
+                if (signal) {
+                    signal.removeEventListener('abort', handleAbort);
+                }
+            }
         }
 
         async function sendChat() {
@@ -564,37 +1759,55 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const imageInput = document.getElementById('chatImage');
             if (!input || !imageInput) return;
             const message = (input.value || '').trim();
+            const selectedImage = chatSelectedImageFile || (imageInput.files && imageInput.files[0]);
 
-            if (!message && (!imageInput.files || imageInput.files.length === 0)) {
+            if (!message && !selectedImage) {
                 addChat('系统', '请输入消息或上传图片。');
                 return;
             }
 
-            addChat('你', message || '[图片提问]');
+            if (selectedImage) {
+                const imageUrl = URL.createObjectURL(selectedImage);
+                const textHtml = message ? `<div class="chat-bubble-text">${escapeHtml(message)}</div>` : '';
+                addChat('你', `<img class="chat-bubble-image" src="${imageUrl}" alt="已发送图片" />${textHtml}`, true);
+                setTimeout(() => {
+                    try { URL.revokeObjectURL(imageUrl); } catch (_) {}
+                }, 60_000);
+            } else {
+                addChat('你', message);
+            }
             input.value = '';
+            if (selectedImage) {
+                clearChatImageSelection();
+            } else {
+                updateChatActionButton();
+            }
+            const pending = addChat('AI', '', false);
+            const abortController = new AbortController();
+            chatStreamAbortController = abortController;
+            updateChatStreamingState(true);
 
             try {
-                let r;
-                if (imageInput.files && imageInput.files.length > 0) {
-                    const fd = new FormData();
-                    fd.append('message', message);
-                    fd.append('image', imageInput.files[0]);
-                    r = await fetch(`${API}/api/ai/chat`, { method: 'POST', body: fd });
-                    imageInput.value = '';
-                } else {
-                    r = await fetch(`${API}/api/ai/chat`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message })
-                    });
-                }
-                const d = await r.json();
-                if (!d.success) throw new Error(d.error || 'chat failed');
-                addChat('AI', d.reply || '(空回复)');
+                const d = await requestChatStream(message, selectedImage, pending, { signal: abortController.signal });
                 if (d.image_url) addChat('AI', `快报图链接: ${API}${d.image_url}`);
-                await speakText(d.reply || '');
-            } catch (e) {
-                addChat('系统', `失败: ${e.message}`);
+                speakText(d.reply || '').catch(() => {});
+            } catch (streamErr) {
+                if (streamErr && streamErr.name === 'AbortError') {
+                    if (pending && pending.bubble && !pending.bubble.textContent) {
+                        pending.bubble.textContent = '(已停止)';
+                    }
+                    addChat('系统', '已停止当前生成。');
+                    return;
+                }
+                if (pending && pending.item) pending.item.remove();
+                addChat('系统', `失败: ${streamErr.message || '模型回复失败'}`);
+                updateChatActionButton();
+            } finally {
+                if (chatStreamAbortController === abortController) {
+                    chatStreamAbortController = null;
+                }
+                updateChatStreamingState(false);
+                clearChatImageSelection();
             }
         }
 
@@ -604,25 +1817,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const statusEl = document.getElementById('micStatus');
                 const btnEl = document.getElementById('micBtn');
                 if (statusEl) statusEl.textContent = '麦克风状态：浏览器不支持语音识别';
-                if (btnEl) btnEl.disabled = true;
+                if (btnEl) {
+                    btnEl.disabled = true;
+                    btnEl.classList.add('muted');
+                }
                 return;
             }
 
             recognition = new SpeechRecognition();
             recognition.lang = 'zh-CN';
-            recognition.interimResults = false;
-            recognition.continuous = false;
+            recognition.interimResults = true;
+            recognition.continuous = true;
 
             recognition.onstart = () => {
+                micAbortRequested = false;
+                const input = document.getElementById('chatInput');
+                const existing = (input && input.value ? String(input.value) : '').trim();
+                micFinalTranscript = existing ? `${existing} ` : '';
                 listening = true;
-                document.getElementById('micBtn').textContent = '停止语音输入';
-                document.getElementById('micStatus').textContent = '麦克风状态：识别中...';
+                updateMicButtonUI();
+                document.getElementById('micStatus').textContent = '麦克风状态：听写中...（再次点击可停止）';
             };
 
             recognition.onend = () => {
                 listening = false;
-                document.getElementById('micBtn').textContent = '开始语音输入';
-                document.getElementById('micStatus').textContent = '麦克风状态：未启动';
+                updateMicButtonUI();
+                document.getElementById('micStatus').textContent = micAbortRequested ? '麦克风状态：已停止' : '麦克风状态：未启动';
+                micAbortRequested = false;
             };
 
             recognition.onerror = (event) => {
@@ -630,16 +1851,36 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             };
 
             recognition.onresult = (event) => {
-                const text = event.results[0][0].transcript;
-                document.getElementById('chatInput').value = text;
-                sendChat();
+                if (micAbortRequested) return;
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; i += 1) {
+                    const piece = String(event.results[i][0].transcript || '');
+                    if (!piece) continue;
+                    if (event.results[i].isFinal) micFinalTranscript += piece;
+                    else interim += piece;
+                }
+                const input = document.getElementById('chatInput');
+                if (!input) return;
+                input.value = `${micFinalTranscript}${interim}`.trim();
+                updateChatActionButton();
             };
         }
 
         function toggleMic() {
             if (!recognition) return;
-            if (listening) recognition.stop();
-            else recognition.start();
+            if (listening) {
+                micAbortRequested = true;
+                try { recognition.abort(); } catch (_) { recognition.stop(); }
+                listening = false;
+                updateMicButtonUI();
+                document.getElementById('micStatus').textContent = '麦克风状态：正在停止...';
+                return;
+            }
+            try {
+                recognition.start();
+            } catch (e) {
+                document.getElementById('micStatus').textContent = `麦克风启动失败: ${e.message || e}`;
+            }
         }
 
         async function runTTS() {
@@ -680,22 +1921,128 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }
         }
 
-        async function runVLMImage() { await runVLMByEndpoint('/api/ai/vlm/image', 'vlmImageOut'); }
-        async function runVLMKline() { await runVLMByEndpoint('/api/ai/vlm/kline', 'vlmImageOut'); }
+        async function fetchVisionKlineData(bank) {
+            const safeBank = bank === 'minsheng' ? 'minsheng' : 'zheshang';
+            const candidates = [
+                `${API}/api/kline/${safeBank}?period=1m&limit=120`,
+                `/api/kline/${safeBank}?period=1m&limit=120`,
+            ];
 
-        async function runVLMByEndpoint(endpoint, outputId) {
-            const out = document.getElementById(outputId);
-            const fileInput = document.getElementById('vlmFile');
-            out.textContent = '执行中...';
+            let lastError = null;
+            for (const url of candidates) {
+                try {
+                    const r = await fetch(url);
+                    if (!r.ok) {
+                        throw new Error(`HTTP ${r.status}`);
+                    }
+                    const d = await r.json();
+                    const hasDataArray = d && Array.isArray(d.data);
+                    const successFlag = d && d.success;
+                    if (!(successFlag === true || hasDataArray)) {
+                        throw new Error((d && d.error) || 'K线数据读取失败');
+                    }
+                    return hasDataArray ? d.data : [];
+                } catch (e) {
+                    lastError = e;
+                }
+            }
+
+            throw new Error(`K线数据读取失败: ${lastError ? lastError.message : 'unknown error'}`);
+        }
+
+        function buildVisionKlineOption(bank, data) {
+            const label = bank === 'minsheng' ? '民生积存金' : '浙商积存金';
+            const xAxis = data.map(k => String(k.datetime || '').substring(5, 16));
+            const candleData = data.map(k => [k.open, k.close, k.low, k.high]);
+            return {
+                backgroundColor: '#0f1526',
+                animation: false,
+                title: {
+                    text: `${label} K线快照`,
+                    left: 12,
+                    top: 8,
+                    textStyle: { color: '#dbe7ff', fontSize: 15, fontWeight: 500 }
+                },
+                grid: [{ left: 56, right: 18, top: 42, bottom: 34, containLabel: true }],
+                xAxis: [{
+                    type: 'category',
+                    data: xAxis,
+                    scale: true,
+                    boundaryGap: false,
+                    axisLine: { lineStyle: { color: '#334766' } },
+                    axisLabel: { color: '#8aa5cf', fontSize: 10 },
+                    splitLine: { show: false }
+                }],
+                yAxis: [{
+                    scale: true,
+                    axisLine: { lineStyle: { color: '#334766' } },
+                    axisLabel: { color: '#8aa5cf', margin: 10, formatter: (v) => Number(v).toFixed(2) },
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
+                }],
+                series: [{
+                    name: 'K线',
+                    type: 'candlestick',
+                    data: candleData,
+                    itemStyle: {
+                        color: '#23c55e',
+                        color0: '#ef4444',
+                        borderColor: '#23c55e',
+                        borderColor0: '#ef4444'
+                    }
+                }]
+            };
+        }
+
+        async function buildVisionKlineSnapshotFile(bank, data) {
+            const container = document.createElement('div');
+            container.style.cssText = 'position: fixed; left: -10000px; top: -10000px; width: 980px; height: 560px; pointer-events: none;';
+            document.body.appendChild(container);
+
+            let chart = null;
             try {
-                if (!fileInput.files || fileInput.files.length === 0) throw new Error('请先选择图像文件');
+                chart = echarts.init(container, 'dark');
+                chart.setOption(buildVisionKlineOption(bank, data), true);
+                await new Promise((resolve) => setTimeout(resolve, 100));
+                chart.resize({ width: 980, height: 560 });
+                await new Promise((resolve) => setTimeout(resolve, 80));
+
+                const dataUrl = chart.getDataURL({
+                    type: 'png',
+                    pixelRatio: 2,
+                    backgroundColor: '#0f1526'
+                });
+
+                const blob = await (await fetch(dataUrl)).blob();
+                return new File([blob], `kline_auto_${bank}_${Date.now()}.png`, { type: 'image/png' });
+            } finally {
+                if (chart) {
+                    try { chart.dispose(); } catch (_) {}
+                }
+                container.remove();
+            }
+        }
+
+        async function runVLMKlineAuto(bank = 'zheshang') {
+            const out = document.getElementById('vlmImageOut');
+            setOutLoading(out, '正在从K线图自动截取并进行VL分析...');
+            try {
+                const data = await fetchVisionKlineData(bank);
+                const count = data.length;
+                if (count < 8) {
+                    throw new Error(`K线数据过少（当前 ${count} 根），请稍后再试`);
+                }
+
+                const warning = count < 20 ? `提醒：当前仅 ${count} 根K线，样本偏少，结论仅供参考。\n\n` : '';
+                const imageFile = await buildVisionKlineSnapshotFile(bank, data);
+
                 const formData = new FormData();
-                formData.append('image', fileInput.files[0]);
-                const r = await fetch(`${API}${endpoint}`, { method: 'POST', body: formData });
+                formData.append('image', imageFile, imageFile.name || 'kline_auto.png');
+                const r = await fetch(`${API}/api/ai/vlm/kline`, { method: 'POST', body: formData });
                 const d = await r.json();
-                if (!d.success) throw new Error(d.error || 'VLM分析失败');
-                out.textContent = d.result || '(空结果)';
-                await speakText(d.result || '');
+                if (!d.success) throw new Error(d.error || 'K线分析失败');
+
+                out.textContent = warning + (d.result || '(空结果)');
+                speakVisionText(d.result || '').catch(() => {});
             } catch (e) {
                 out.textContent = `失败: ${e.message}`;
             }
@@ -703,7 +2050,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         async function runVLMMarket() {
             const out = document.getElementById('vlmMarketOut');
-            out.textContent = '执行中...';
+            setOutLoading(out, 'VL 模型正在生成市场分析...');
             try {
                 const r = await fetch(`${API}/api/ai/vlm/market`, {
                     method: 'POST',
@@ -713,35 +2060,93 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const d = await r.json();
                 if (!d.success) throw new Error(d.error || 'VLM市场分析失败');
                 out.textContent = d.result || '(空结果)';
-                await speakText(d.result || '');
+                speakVisionText(d.result || '').catch(() => {});
             } catch (e) {
                 out.textContent = `失败: ${e.message}`;
             }
         }
 
-        async function generateBriefImage() {
+        async function generateBriefImage(options = {}) {
             const out = document.getElementById('briefOut');
             const img = document.getElementById('briefImage');
             const link = document.getElementById('briefDownload');
-            out.textContent = '执行中...';
+            const extNewsToggle = document.getElementById('briefUseExternalNews');
+            setOutLoading(out, 'AI 模型正在生成快报图...');
             img.style.display = 'none';
             try {
                 const title = document.getElementById('briefTitle').value || '积存金行情快报';
+                const includeExternalNews = !extNewsToggle || extNewsToggle.checked;
                 const r = await fetch(`${API}/api/ai/image/brief`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title })
+                    body: JSON.stringify({
+                        title,
+                        include_external_news: includeExternalNews
+                    })
                 });
                 const d = await r.json();
                 if (!d.success) throw new Error(d.error || '快报图生成失败');
                 const url = `${API}${d.image_url}`;
-                out.textContent = `生成成功: ${d.image_file}`;
+                const allLines = Array.isArray(d.news_lines) ? d.news_lines : [];
+                const jinLines = allLines.filter((x) => String(x || '').startsWith('金十贵金属:'));
+                const localLines = allLines.filter((x) => !String(x || '').startsWith('金十贵金属:'));
+                const previewParts = [];
+                if (jinLines.length) previewParts.push(`金十贵金属:\\n- ${jinLines.slice(0, 2).join('\\n- ')}`);
+                if (localLines.length) previewParts.push(`本地行情:\\n- ${localLines.slice(0, 2).join('\\n- ')}`);
+                const newsPreview = previewParts.length ? `\\n新闻摘要:\\n${previewParts.join('\\n')}` : '';
+                out.textContent = `生成成功: ${d.image_file}` + (d.warning ? `\\n提示: ${d.warning}` : '') + newsPreview;
                 img.src = url;
                 img.style.display = 'block';
                 link.href = url;
                 link.textContent = '打开最新图片';
+                if (options.autoDownload) {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = d.image_file || 'market_brief.png';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                }
+                return d;
             } catch (e) {
                 out.textContent = `失败: ${e.message}`;
+                throw e;
+            }
+        }
+
+        async function previewBriefNews() {
+            const out = document.getElementById('briefOut');
+            const extNewsToggle = document.getElementById('briefUseExternalNews');
+            const includeExternalNews = !extNewsToggle || extNewsToggle.checked;
+            setOutLoading(out, '正在抓取快报新闻源...');
+            try {
+                const r = await fetch(`${API}/api/ai/news/brief`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ include_external_news: includeExternalNews })
+                });
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || '新闻预览失败');
+                const lines = Array.isArray(d.news_lines) ? d.news_lines : [];
+                if (!lines.length) {
+                    out.textContent = '暂无可用新闻。';
+                    return;
+                }
+                const jinLines = lines.filter((x) => String(x || '').startsWith('金十贵金属:'));
+                const localLines = lines.filter((x) => !String(x || '').startsWith('金十贵金属:'));
+                const blocks = [];
+                if (jinLines.length) blocks.push(`【金十贵金属分类】\\n- ${jinLines.slice(0, 8).join('\\n- ')}`);
+                if (localLines.length) blocks.push(`【本地行情补充】\\n- ${localLines.slice(0, 6).join('\\n- ')}`);
+                out.textContent = `新闻预览（共 ${lines.length} 条）:\\n${blocks.join('\\n')}`;
+            } catch (e) {
+                out.textContent = `失败: ${e.message}`;
+            }
+        }
+
+        async function generateBriefImageAndDownload() {
+            try {
+                await generateBriefImage({ autoDownload: true });
+            } catch (_) {
             }
         }
 
@@ -752,8 +2157,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }
             if (aiInitialized) return;
             aiInitialized = true;
+            updateAISidebarMetrics();
             addChat('系统', '欢迎使用 AI 多场景助手。你可以语音提问，或上传新闻截图/K线图。');
             initSpeechRecognition();
+            bindChatComposerEvents();
+            updateTTSButton();
+            updateVisionTTSButton();
+            updateMicButtonUI();
+            updateChatUploadPreview();
+            updateChatActionButton();
             loadCapabilities();
             const defaultBtn = document.getElementById('btn-ai-chat');
             switchAIWindow('chat', defaultBtn);
@@ -789,7 +2201,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const statusText = isTrading ? '交易中' : '休市';
                 const changeClass = (data.change_rate || '').includes('+') ? 'change-positive' : 'change-negative';
                 const pos = currentData.positions?.[bank] || {};
-                const pnlClass = (pos.unrealized_pnl || 0) >= 0 ? 'profit-positive' : 'profit-negative';
+                const baseUnrealized = Number(pos.unrealized_pnl || 0);
+                const estimatedExitFee = Number(pos.position_value || 0) * 0.004;
+                const feeAdjust = includeFeeInUnrealized ? estimatedExitFee : 0;
+                const unrealizedDisplay = baseUnrealized - feeAdjust;
+                const pnlClass = unrealizedDisplay >= 0 ? 'profit-positive' : 'profit-negative';
                 
                 html += `
                     <div class="card">
@@ -809,15 +2225,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <div class="info-item"><div class="info-label">持仓数量</div><div class="info-value">${(pos.position || 0).toFixed(2)} 克</div></div>
                             <div class="info-item"><div class="info-label">持仓均价</div><div class="info-value">${(pos.avg_price || 0).toFixed(2)} 元/克</div></div>
                             <div class="info-item"><div class="info-label">持仓市值</div><div class="info-value">${(pos.position_value || 0).toFixed(2)} 元</div></div>
-                            <div class="info-item"><div class="info-label">浮动盈亏</div><div class="info-value ${pnlClass}">${(pos.unrealized_pnl || 0) >= 0 ? '+' : ''}${(pos.unrealized_pnl || 0).toFixed(2)} 元</div></div>
+                            <div class="info-item"><div class="info-label">浮动盈亏${includeFeeInUnrealized ? '(含预估卖出手续费)' : ''}</div><div class="info-value ${pnlClass}">${unrealizedDisplay >= 0 ? '+' : ''}${unrealizedDisplay.toFixed(2)} 元</div></div>
                             <div class="info-item"><div class="info-label">已实现盈亏</div><div class="info-value">${(pos.realized_pnl || 0) >= 0 ? '+' : ''}${(pos.realized_pnl || 0).toFixed(2)} 元</div></div>
                             <div class="info-item"><div class="info-label">累计手续费</div><div class="info-value">${(pos.total_fees || 0).toFixed(2)} 元</div></div>
+                            <div class="info-item"><div class="info-label">预估卖出手续费(0.4%)</div><div class="info-value">${estimatedExitFee.toFixed(2)} 元</div></div>
                             <div class="info-item"><div class="info-label">总资产</div><div class="info-value" style="color: #FFD700; font-size: 1.2em;">${(pos.total_value || 0).toFixed(2)} 元</div></div>
                         </div>
                         <div class="trading-hours">
                             <div class="trading-hours-title">交易时间</div>
                             <div class="trading-hours-content">${bank === 'zheshang' ? '周一 9:00 - 周六 2:00' : '周一-周六 9:10-02:30'}</div>
                         </div>
+                        <div class="trade-ops">
+                            <button class="trade-op-btn trade-op-buy" type="button" onclick="openTradeModal('${bank}', 'BUY')">买入（按实时价）</button>
+                            <button class="trade-op-btn trade-op-sell" type="button" onclick="openTradeModal('${bank}', 'SELL')">卖出（按实时价）</button>
+                            <button class="trade-op-btn trade-op-topup" type="button" onclick="openRechargeModal('${bank}')">增加余额</button>
+                        </div>
+                        <div class="trade-op-tip">点击后弹窗输入克数，并显示当前买卖参考价格。</div>
                     </div>
                 `;
             }
@@ -942,75 +2365,121 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return result;
         }
         
-        function updateStatus(connected) {
+        function updateStatus(connected, fallbackMode = false) {
             const statusDiv = document.getElementById('wsStatus');
-            statusDiv.className = 'ws-status ' + (connected ? 'ws-connected' : 'ws-disconnected');
-            statusDiv.innerHTML = '<span>●</span> ' + (connected ? '实时推送中' : '未连接');
+            if (connected) {
+                statusDiv.className = 'ws-status ws-connected';
+                statusDiv.innerHTML = '<span>●</span> 实时推送中';
+                return;
+            }
+
+            if (fallbackMode) {
+                statusDiv.className = 'ws-status ws-connected';
+                statusDiv.innerHTML = '<span>●</span> 轮询刷新中';
+                return;
+            }
+
+            statusDiv.className = 'ws-status ws-disconnected';
+            statusDiv.innerHTML = '<span>●</span> 未连接';
         }
         
-        function buildWebSocketUrl() {
+        function buildWebSocketUrls() {
+            const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const urls = [];
+
             if (WS_BASE) {
                 if (WS_BASE.startsWith('ws://') || WS_BASE.startsWith('wss://')) {
-                    return WS_BASE;
-                }
-                if (WS_BASE.startsWith('/')) {
-                    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                    return `${wsProto}//${window.location.host}${WS_BASE}`;
+                    urls.push(WS_BASE);
+                } else if (WS_BASE.startsWith('/')) {
+                    urls.push(`${wsProto}//${window.location.host}${WS_BASE}`);
                 }
             }
-            const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
             if (REMOTE_PAGE) {
-                return `${wsProto}//${window.location.host}/ws`;
+                urls.push(`${wsProto}//${window.location.host}/ws`);
             }
             if (isLikelyGatewayPort) {
-                return `${wsProto}//${window.location.host}/ws`;
+                urls.push(`${wsProto}//${window.location.host}/ws`);
             }
-            return 'ws://' + window.location.hostname + ':8765';
+
+            urls.push(`${wsProto}//${window.location.hostname}:${DASHBOARD_WS_PORT}`);
+            return Array.from(new Set(urls.filter(Boolean)));
         }
 
         function connectWebSocket() {
-            const wsUrl = buildWebSocketUrl();
-            ws = new WebSocket(wsUrl);
-            
-            ws.onopen = () => { updateStatus(true); };
-            
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'price_update' && data.prices) {
-                    for (const [bank, priceData] of Object.entries(data.prices)) {
-                        if (currentData.prices[bank]) {
-                            currentData.prices[bank].price = priceData.price;
-                            currentData.prices[bank].change_amt = priceData.change_amt;
-                            currentData.prices[bank].change_rate = priceData.change_rate;
+            const wsUrls = buildWebSocketUrls();
+            let attemptIndex = 0;
+
+            const connectWithIndex = (index) => {
+                const wsUrl = wsUrls[Math.min(index, wsUrls.length - 1)];
+                let opened = false;
+
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    opened = true;
+                    updateStatus(true);
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'price_update' && data.prices) {
+                        for (const [bank, priceData] of Object.entries(data.prices)) {
+                            if (currentData.prices[bank]) {
+                                currentData.prices[bank].price = priceData.price;
+                                currentData.prices[bank].change_amt = priceData.change_amt;
+                                currentData.prices[bank].change_rate = priceData.change_rate;
+                            }
                         }
+                        currentData.timestamp = data.timestamp;
+                        renderPrices();
+                        updateRealtimeCharts();
+                        updateTradeModalQuote();
+                        document.getElementById('updateTime').textContent = '更新于: ' + formatDateTime(data.timestamp);
                     }
-                    currentData.timestamp = data.timestamp;
-                    renderPrices();
-                    updateRealtimeCharts();
-                    document.getElementById('updateTime').textContent = '更新于: ' + formatDateTime(data.timestamp);
-                }
+                };
+
+                ws.onclose = () => {
+                    if (!opened && attemptIndex < wsUrls.length - 1) {
+                        attemptIndex += 1;
+                        setTimeout(() => connectWithIndex(attemptIndex), 200);
+                        return;
+                    }
+                    updateStatus(false, true);
+                    setTimeout(connectWebSocket, 3000);
+                };
+
+                ws.onerror = () => {
+                    if (!opened) {
+                        try { ws.close(); } catch (_) {}
+                    }
+                };
             };
-            
-            ws.onclose = () => { updateStatus(false); setTimeout(connectWebSocket, 3000); };
-            ws.onerror = () => { updateStatus(false); };
+
+            connectWithIndex(attemptIndex);
         }
         
+        try {
+            includeFeeInUnrealized = localStorage.getItem('dashboard.pnlIncludeFee') === '1';
+        } catch (_) {
+            includeFeeInUnrealized = false;
+        }
+        updatePnLToggleButton();
+
         renderStats();
         renderPrices();
         renderTrades();
         updateRealtimeCharts();
+        updateAISidebarMetrics();
+        window.addEventListener('resize', updateAISidebarMetrics);
         connectWebSocket();
         initAITab();
+        refreshDashboardData().then(() => updateTradeModalQuote()).catch(() => {});
         
         setInterval(() => {
-            fetch('/api/data').then(r => r.json()).then(data => {
-                currentData = data;
-                renderStats();
-                renderPrices();
-                renderTrades();
-                updateRealtimeCharts();
-                document.getElementById('updateTime').textContent = '更新于: ' + formatDateTime(data.timestamp);
-            }).catch(e => console.error('刷新失败:', e));
+            refreshDashboardData()
+                .then(() => updateTradeModalQuote())
+                .catch(e => console.error('刷新失败:', e));
         }, 2000);
     </script>
 </body>
@@ -1022,6 +2491,7 @@ class DashboardV3Server:
     
     def __init__(self):
         self.proxy = find_working_proxy()
+        self.service_ports = self._load_service_ports()
         self.traders = {
             'zheshang': JijinTrader(bank='zheshang', proxy=self.proxy),
             'minsheng': JijinTrader(bank='minsheng', proxy=self.proxy)
@@ -1047,6 +2517,29 @@ class DashboardV3Server:
         t = threading.Thread(target=self._kline_recorder_loop, daemon=True)
         t.start()
         self._kline_recorder_started = True
+
+    def _load_service_ports(self):
+        defaults = {
+            'websocket': 8765,
+            'dashboard': 5000,
+            'api': 8080,
+            'portal': 8090,
+        }
+
+        ports_file = PROJECT_ROOT / '.service_ports.json'
+        if not ports_file.exists():
+            return defaults
+
+        try:
+            raw = json.loads(ports_file.read_text(encoding='utf-8'))
+        except Exception:
+            return defaults
+
+        for key in defaults.keys():
+            value = raw.get(key)
+            if isinstance(value, int) and value > 0:
+                defaults[key] = value
+        return defaults
     
     def get_data(self):
         """获取数据"""
@@ -1099,6 +2592,7 @@ class DashboardV3Server:
         def index():
             data = self.get_data()
             html = HTML_TEMPLATE.replace('INITIAL_DATA', json.dumps(data))
+            html = html.replace('DASHBOARD_PORTS_JSON', json.dumps(self.service_ports))
             return html
         
         @app.route('/api/data')

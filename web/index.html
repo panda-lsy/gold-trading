@@ -460,7 +460,7 @@
             const box = document.getElementById('caps');
             if (box) box.textContent = '状态检查中...';
             try {
-                const r = await fetch(`${API}/api/ai/capabilities`);
+                const r = await fetch(`${API}/api/ai/capabilities?fast=false`);
                 const d = await r.json();
                 if (!d.success) throw new Error(d.error || 'Server error');
                 renderCaps(d.capabilities || {});
