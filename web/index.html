@@ -326,11 +326,13 @@
 
         const HOST = window.location.hostname || '127.0.0.1';
         const PROTOCOL = window.location.protocol || 'http:';
+        const CURRENT_ORIGIN = `${PROTOCOL}//${window.location.host}`;
+        const REMOTE_PAGE = !(HOST === '127.0.0.1' || HOST === 'localhost');
         const params = new URLSearchParams(window.location.search);
         const apiOverride = params.get('api_base') || window.__API_BASE__;
         const dashboardOverride = params.get('dashboard_base') || window.__DASHBOARD_BASE__;
-        const API = apiOverride || `${PROTOCOL}//${HOST}:8080`;
-        const DASHBOARD_URL = dashboardOverride || `${PROTOCOL}//${HOST}:5000`;
+        const API = apiOverride || (REMOTE_PAGE ? CURRENT_ORIGIN : `${PROTOCOL}//${HOST}:8080`);
+        const DASHBOARD_URL = dashboardOverride || (REMOTE_PAGE ? CURRENT_ORIGIN : `${PROTOCOL}//${HOST}:5000`);
         const DASHBOARD_EMBED_URL = `${DASHBOARD_URL}${DASHBOARD_URL.includes('?') ? '&' : '?'}embed=1`;
         const DASHBOARD_HEALTH_URL = `${DASHBOARD_URL}/api/health`;
 
