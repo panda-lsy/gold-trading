@@ -112,14 +112,14 @@ class Qwen3TTS:
             output_file = "/tmp/tts_output.wav"
 
         normalized_text = self._normalize_text(text)
-        if fast_mode and len(normalized_text) > 64:
-            normalized_text = normalized_text[:64]
+        if fast_mode and len(normalized_text) > 220:
+            normalized_text = normalized_text[:220] + '。'
         if not normalized_text:
             print("输入文本为空")
             return None
         
         try:
-            chunk_limit = 32 if fast_mode else 80
+            chunk_limit = 56 if fast_mode else 90
             chunks = self._split_text(normalized_text, max_chars=chunk_limit)
             if not chunks:
                 raise ValueError("empty text chunks")
@@ -131,7 +131,7 @@ class Qwen3TTS:
                     print("TTS 合成已取消")
                     return None
 
-                token_budget = max(96, min(320 if fast_mode else 900, len(chunk) * (4 if fast_mode else 9)))
+                token_budget = max(64, min(220 if fast_mode else 900, len(chunk) * (3 if fast_mode else 9)))
                 wavs, sr = self.model.generate_custom_voice(
                     text=chunk,
                     speaker=speaker,

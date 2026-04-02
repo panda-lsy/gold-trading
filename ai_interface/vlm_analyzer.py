@@ -39,7 +39,15 @@ class Qwen3VLAnalyzer:
         try:
             from optimum.intel.openvino import modeling_visual_language as ov_vlm
             from optimum.intel import OVModelForVisualCausalLM
-            from transformers import AutoProcessor, AutoTokenizer
+            try:
+                from transformers import AutoProcessor  # type: ignore
+            except Exception:
+                from transformers.models.auto.processing_auto import AutoProcessor  # type: ignore
+
+            try:
+                from transformers import AutoTokenizer  # type: ignore
+            except Exception:
+                from transformers.models.auto.tokenization_auto import AutoTokenizer  # type: ignore
 
             # 当前 optimum 版本未声明 qwen3_vl，映射到 qwen2_5_vl 兼容类可正常加载 IR。
             if "qwen3_vl" not in ov_vlm.MODEL_TYPE_TO_CLS_MAPPING and "qwen2_5_vl" in ov_vlm.MODEL_TYPE_TO_CLS_MAPPING:
@@ -89,7 +97,10 @@ class Qwen3VLAnalyzer:
 
     def _stream_generate(self, inputs: dict, tokenizer, max_new_tokens: int = 256):
         """基于 TextIteratorStreamer 进行模型级 token 流输出。"""
-        from transformers import TextIteratorStreamer
+        try:
+            from transformers import TextIteratorStreamer  # type: ignore
+        except Exception:
+            from transformers.generation.streamers import TextIteratorStreamer  # type: ignore
 
         streamer = TextIteratorStreamer(
             tokenizer,
@@ -225,7 +236,8 @@ class Qwen3VLAnalyzer:
 
         inputs = tokenizer(chat_text, return_tensors='pt')
         self.last_response_mode = "model"
-        for token in self._stream_generate(inputs=inputs, tokenizer=tokenizer, max_new_tokens=64):
+        # 提高回复上限，避免句尾在流式场景中被硬截断。
+        for token in self._stream_generate(inputs=inputs, tokenizer=tokenizer, max_new_tokens=128):
             yield token
 
     def _rule_based_market_analysis(self, market_data: dict, user_message: str = '') -> str:

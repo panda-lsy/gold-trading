@@ -180,6 +180,34 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: #edf5ff;
         }
         .chat-item.ai .bubble { align-self: flex-start; }
+        .bubble-actions { display: flex; align-self: flex-start; margin-top: 2px; }
+        .bubble-replay-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 999px;
+            border: 1px solid #4d6aa6;
+            background: rgba(19, 35, 65, 0.9);
+            color: #d8e8ff;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .bubble-replay-btn:hover { border-color: #78a6ff; background: rgba(31, 55, 97, 0.95); }
+        .bubble-replay-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .bubble-replay-btn.busy { color: transparent; pointer-events: none; }
+        .bubble-replay-btn.busy::after {
+            content: '';
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid rgba(160, 198, 255, 0.35);
+            border-top-color: #a7cbff;
+            animation: spin 0.8s linear infinite;
+        }
+        .bubble-replay-btn .btn-icon-wrap { width: 16px; height: 16px; }
+        .bubble-replay-btn .btn-icon-svg { width: 16px; height: 16px; }
         .chat-item.system .role { color: #c8a969; }
         .chat-item.system .bubble {
             align-self: stretch;
@@ -953,6 +981,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }
             ttsBusy = false;
             updateTTSButton();
+            updateAllReplayButtons();
         }
 
         function updateTTSButton() {
@@ -1072,7 +1101,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             updateTTSButton();
         }
 
-        function toSpeechText(text) {
+        function toSpeechText(text, maxLen = 220) {
             const src = String(text || '').trim();
             if (!src) return '';
             let cleaned = src
@@ -1081,17 +1110,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 .replace(/\\n+/g, '，')
                 .replace(/\s+/g, ' ')
                 .trim();
-            if (cleaned.length > 96) cleaned = cleaned.slice(0, 96) + '。';
+
+            const limit = Math.max(80, Number(maxLen || 220));
+            if (cleaned.length > limit) {
+                const sliced = cleaned.slice(0, limit);
+                const puncts = ['。', '！', '？', ';', '；', '.', '!', '?', '，', ','];
+                const nearest = puncts
+                    .map((ch) => sliced.lastIndexOf(ch))
+                    .reduce((m, i) => (i > m ? i : m), -1);
+                if (nearest > Math.floor(limit * 0.55)) cleaned = sliced.slice(0, nearest + 1);
+                else cleaned = sliced + '。';
+            }
             return cleaned;
         }
 
-        async function playTTSOnce(rawText) {
-            if (!ttsEnabled) return;
+        async function playTTSOnce(rawText, forcePlay = false) {
+            if (!forcePlay && !ttsEnabled) return;
             const text = toSpeechText(rawText);
             if (!text) return;
 
             ttsBusy = true;
             updateTTSButton();
+            updateAllReplayButtons();
             const controller = new AbortController();
             ttsAbortController = controller;
             const requestId = `${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
@@ -1107,7 +1147,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const d = await r.json();
                 if (!d.success || !d.audio_url) return;
 
-                if (!ttsEnabled || ttsActiveRequestId !== requestId) return;
+                if ((!forcePlay && !ttsEnabled) || ttsActiveRequestId !== requestId) return;
                 if (!ttsAudioPlayer) ttsAudioPlayer = new Audio();
                 ttsAudioPlayer.pause();
                 ttsAudioPlayer.src = `${API}${d.audio_url}`;
@@ -1124,6 +1164,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (ttsActiveRequestId === requestId) ttsActiveRequestId = '';
                 ttsBusy = false;
                 updateTTSButton();
+                updateAllReplayButtons();
             }
         }
 
@@ -1342,9 +1383,29 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
             item.appendChild(roleNode);
             item.appendChild(bubbleNode);
+
+            let replayBtn = null;
+            if (roleClass === 'ai') {
+                const actions = document.createElement('div');
+                actions.className = 'bubble-actions';
+
+                replayBtn = document.createElement('button');
+                replayBtn.type = 'button';
+                replayBtn.className = 'bubble-replay-btn';
+                replayBtn.title = '重播这条 AI 回复';
+                setButtonIcon(replayBtn, 'speakerOn');
+                replayBtn.addEventListener('click', () => {
+                    replayBubbleVoice(bubbleNode).catch(() => {});
+                });
+
+                actions.appendChild(replayBtn);
+                item.appendChild(actions);
+                updateReplayButtonState(replayBtn, bubbleNode);
+            }
+
             box.appendChild(item);
             box.scrollTop = box.scrollHeight;
-            return { item, bubble: bubbleNode };
+            return { item, bubble: bubbleNode, replayBtn };
         }
 
         function renderCaps(caps) {
@@ -1587,11 +1648,44 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return ttsQueue;
         }
 
+        function getBubbleReplayText(bubbleNode) {
+            if (!bubbleNode) return '';
+            return String(bubbleNode.innerText || bubbleNode.textContent || '').trim();
+        }
+
+        function updateReplayButtonState(replayBtn, bubbleNode) {
+            if (!replayBtn) return;
+            const text = getBubbleReplayText(bubbleNode);
+            const hasText = !!toSpeechText(text);
+            replayBtn.dataset.hasText = hasText ? '1' : '0';
+            replayBtn.style.display = hasText ? 'inline-flex' : 'none';
+            replayBtn.classList.toggle('busy', !!ttsBusy);
+            replayBtn.disabled = !hasText || !!ttsBusy;
+        }
+
+        function updateAllReplayButtons() {
+            const buttons = document.querySelectorAll('.bubble-replay-btn');
+            buttons.forEach((btn) => {
+                const item = btn.closest('.chat-item');
+                const bubbleNode = item ? item.querySelector('.bubble') : null;
+                updateReplayButtonState(btn, bubbleNode);
+            });
+        }
+
+        async function replayBubbleVoice(bubbleNode) {
+            const text = getBubbleReplayText(bubbleNode);
+            if (!toSpeechText(text, 360)) return;
+            cancelActiveTTS();
+            ttsQueue = playTTSOnce(toSpeechText(text, 360), true).catch(() => {});
+            return ttsQueue;
+        }
+
         function appendChatDelta(pending, text) {
             if (!pending || !pending.bubble) return;
             const next = String(text || '');
             if (!next) return;
             pending.bubble.textContent = (pending.bubble.textContent || '') + next;
+            updateReplayButtonState(pending.replayBtn, pending.bubble);
             const box = document.getElementById('chatWindow');
             if (box) box.scrollTop = box.scrollHeight;
         }
@@ -1724,6 +1818,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     if (!finalReply && payload.reply) {
                         finalReply = String(payload.reply);
                         pending.bubble.textContent = finalReply;
+                        updateReplayButtonState(pending.replayBtn, pending.bubble);
                     }
                     done = true;
                     return;
