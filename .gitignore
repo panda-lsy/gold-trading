@@ -39,6 +39,7 @@ logs/
 .service_pid
 .portal_pid
 .kline_pid
+.gateway_pid
 .service_ports.json
 .service_ports.env
 

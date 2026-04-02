@@ -10,13 +10,20 @@ Routes:
 
 import argparse
 import asyncio
+import logging
 from typing import Dict, Optional
 from urllib.parse import urljoin
 
 from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
 
-# 增加超时设置，避免 AI 模型加载导致超时
+# Base timeout for common short requests.
 DEFAULT_TIMEOUT = ClientTimeout(total=60, connect=10, sock_read=30)
+# Longer timeout for heavy AI requests (model warm-up / long inference).
+AI_TIMEOUT = ClientTimeout(total=360, connect=20, sock_read=330)
+# Stream endpoints should not be cut off by gateway read timeout.
+AI_STREAM_TIMEOUT = ClientTimeout(total=None, connect=20, sock_read=None)
+
+logger = logging.getLogger(__name__)
 
 HOP_HEADERS = {
     "connection",
@@ -66,6 +73,26 @@ class SinglePortGateway:
         if self.client:
             await self.client.close()
 
+    def _select_timeout(self, path: str) -> ClientTimeout:
+        if path.startswith("/api/ai/chat/stream"):
+            return AI_STREAM_TIMEOUT
+        if path.startswith("/api/ai/"):
+            return AI_TIMEOUT
+        return DEFAULT_TIMEOUT
+
+    def _error_response(self, request: web.Request, status: int, code: str, message: str) -> web.Response:
+        if request.path.startswith("/api"):
+            return web.json_response(
+                {
+                    "success": False,
+                    "error": message,
+                    "code": code,
+                    "path": request.path,
+                },
+                status=status,
+            )
+        return web.Response(status=status, text=message, content_type="text/plain")
+
     async def _proxy_http(self, request: web.Request, target_base: str, strip_prefix: str = "") -> web.Response:
         assert self.client is not None
 
@@ -83,16 +110,36 @@ class SinglePortGateway:
         req_headers.pop("Host", None)
 
         body = await request.read()
-        async with self.client.request(
-            method=request.method,
-            url=target_url,
-            headers=req_headers,
-            data=body,
-            allow_redirects=False,
-        ) as upstream:
-            resp_headers = _strip_hop_headers(dict(upstream.headers))
-            data = await upstream.read()
-            return web.Response(status=upstream.status, headers=resp_headers, body=data)
+        timeout = self._select_timeout(request.path)
+
+        try:
+            async with self.client.request(
+                method=request.method,
+                url=target_url,
+                headers=req_headers,
+                data=body,
+                allow_redirects=False,
+                timeout=timeout,
+            ) as upstream:
+                resp_headers = _strip_hop_headers(dict(upstream.headers))
+                data = await upstream.read()
+                return web.Response(status=upstream.status, headers=resp_headers, body=data)
+        except asyncio.TimeoutError:
+            logger.warning("gateway upstream timeout path=%s target=%s", request.path, target_url)
+            return self._error_response(
+                request,
+                status=504,
+                code="GATEWAY_UPSTREAM_TIMEOUT",
+                message="上游服务处理超时，请稍后重试",
+            )
+        except Exception as exc:
+            logger.exception("gateway upstream error path=%s target=%s", request.path, target_url)
+            return self._error_response(
+                request,
+                status=502,
+                code="GATEWAY_UPSTREAM_ERROR",
+                message=f"网关转发失败: {exc}",
+            )
 
     async def _proxy_ws(self, request: web.Request) -> web.StreamResponse:
         assert self.client is not None

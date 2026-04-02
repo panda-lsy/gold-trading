@@ -19,12 +19,15 @@ $stoppedWs = Stop-FromPidFile -PidFile (Join-Path $projectRoot ".ws_pid")
 $stoppedKline = Stop-FromPidFile -PidFile (Join-Path $projectRoot ".kline_pid")
 $stoppedService = Stop-FromPidFile -PidFile (Join-Path $projectRoot ".service_pid")
 $stoppedPortal = Stop-FromPidFile -PidFile (Join-Path $projectRoot ".portal_pid")
+$stoppedGateway = Stop-FromPidFile -PidFile (Join-Path $projectRoot ".gateway_pid")
 
 Stop-ByCommandPatterns -Patterns @(
     "src\\websocket_server.py",
     "app\\kline_recorder_worker.py",
     "app\\dashboard_v3.py",
     "app\\api_server.py",
+    "app\\single_port_gateway.py",
+    "app/single_port_gateway.py",
     "ops\\jijin_service.py",
     "http.server 8090"
 )
@@ -37,5 +40,6 @@ if (-not $Quiet) {
     Write-Host "  Kline:     $stoppedKline"
     Write-Host "  Service:   $stoppedService"
     Write-Host "  Portal:    $stoppedPortal"
+    Write-Host "  Gateway:   $stoppedGateway"
     Write-Host "Done."
 }

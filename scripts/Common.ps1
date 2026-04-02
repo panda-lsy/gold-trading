@@ -201,6 +201,7 @@ function Get-ServicePorts {
         dashboard = 5000
         api = 8080
         portal = 8090
+        gateway = 9002
     }
 
     $portsFile = Join-Path $ProjectRoot ".service_ports.json"
@@ -215,7 +216,7 @@ function Get-ServicePorts {
         }
 
         $obj = $raw | ConvertFrom-Json -ErrorAction Stop
-        foreach ($key in @("websocket", "dashboard", "api", "portal")) {
+        foreach ($key in @("websocket", "dashboard", "api", "portal", "gateway")) {
             if ($null -ne $obj.$key -and [int]$obj.$key -gt 0) {
                 $defaults[$key] = [int]$obj.$key
             }
@@ -240,6 +241,7 @@ function Save-ServicePorts {
         dashboard = [int]$Ports.dashboard
         api = [int]$Ports.api
         portal = [int]$Ports.portal
+        gateway = [int]$Ports.gateway
     }
 
     $json = $payload | ConvertTo-Json
