@@ -11,10 +11,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=hainnu109
-WorkingDirectory=/home/hainnu109/.openclaw/workspace/gold-trading
-Environment="PYTHONPATH=/home/hainnu109/.openclaw/workspace/gold-trading/src"
-ExecStart=/usr/bin/python3 /home/hainnu109/.openclaw/workspace/gold-trading/ops/jijin_service.py --mode service
+User=<user>
+WorkingDirectory=/home/<user>/.openclaw/workspace/gold-trading
+Environment="PYTHONPATH=/home/<user>/.openclaw/workspace/gold-trading/src"
+ExecStart=/usr/bin/python3 /home/<user>/.openclaw/workspace/gold-trading/ops/jijin_service.py --mode service
 Restart=always
 RestartSec=60
 
@@ -32,8 +32,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=hainnu109
-WorkingDirectory=/home/hainnu109/.openclaw/workspace/gold-trading/web
+User=<user>
+WorkingDirectory=/home/<user>/.openclaw/workspace/gold-trading/web
 ExecStart=/usr/bin/python3 -m http.server 8090
 Restart=always
 
@@ -55,3 +55,4 @@ echo ""
 echo "查看状态:"
 echo "  sudo systemctl status jijin-monitor"
 echo "  sudo systemctl status jijin-web"
+

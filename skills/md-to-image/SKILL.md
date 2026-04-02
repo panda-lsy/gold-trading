@@ -59,4 +59,5 @@ sudo apt-get install ttf-wqy-zenhei
 - 危险: 红色 (#ff4444)
 
 ## 文件位置
-`/home/hainnu109/.openclaw/workspace/gold-trading/md_to_image.py`
+`/home/<user>/.openclaw/workspace/gold-trading/md_to_image.py`
+

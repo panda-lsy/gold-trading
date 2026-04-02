@@ -847,6 +847,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const msg = String(message || '').toLowerCase();
             const loading = !ok && (msg.includes('loading') || msg.includes('加载中') || msg.includes('初始化中') || msg.includes('initializing'));
             const notLoaded = !ok && (msg.includes('not loaded') || msg.includes('未加载') || msg.includes('未初始化'));
+            const depMissing = !ok && (
+                msg.includes('no module named') ||
+                msg.includes('qwen_tts') ||
+                msg.includes('pip install qwen-tts') ||
+                msg.includes('导入 helper 失败')
+            );
             const notDeployed = !ok && (
                 msg.includes('模型不存在') ||
                 msg.includes('请从 modelscope 下载') ||
@@ -855,10 +861,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             );
             const statusText = ok
                 ? '就绪'
-                : (loading ? '加载中' : (notLoaded ? '未加载' : (notDeployed ? '未部署' : '异常')));
+                : (loading ? '加载中' : (notLoaded ? '未加载' : (depMissing ? '依赖缺失' : (notDeployed ? '未部署' : '异常'))));
             const stateClass = ok
                 ? 'tag-ready'
-                : ((loading || notLoaded || notDeployed) ? 'tag-loading' : 'tag-down');
+                : ((loading || notLoaded || notDeployed || depMissing) ? 'tag-loading' : 'tag-down');
             tag.className = 'model-tag ' + stateClass;
             tag.textContent = `${labels[key] || key.toUpperCase()}: ${statusText}`;
             if (message) tag.title = String(message);
