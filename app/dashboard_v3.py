@@ -701,7 +701,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const CONFIG_API_BASE = (window.__API_BASE__ || '').trim();
         const REMOTE_PAGE = !(HOST === '127.0.0.1' || HOST === 'localhost');
         const SHOULD_IGNORE_CONFIG_API = REMOTE_PAGE && isLoopbackUrl(CONFIG_API_BASE);
-        const API_DIRECT = `${PROTOCOL}//${HOST}:${DASHBOARD_API_PORT}`;
+        const API_DIRECT = (REMOTE_PAGE || isLikelyGatewayPort)
+            ? CURRENT_ORIGIN
+            : `${PROTOCOL}//${HOST}:${DASHBOARD_API_PORT}`;
         const API = QUERY_API_BASE || (!SHOULD_IGNORE_CONFIG_API && CONFIG_API_BASE) || API_DIRECT;
 
         const CONFIG_WS_BASE = (window.__WS_BASE__ || '').trim();
@@ -845,8 +847,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const msg = String(message || '').toLowerCase();
             const loading = !ok && (msg.includes('loading') || msg.includes('加载中') || msg.includes('初始化中') || msg.includes('initializing'));
             const notLoaded = !ok && (msg.includes('not loaded') || msg.includes('未加载') || msg.includes('未初始化'));
-            tag.className = 'model-tag ' + (ok ? 'tag-ready' : (loading ? 'tag-loading' : 'tag-down'));
-            tag.textContent = `${labels[key] || key.toUpperCase()}: ${ok ? '就绪' : (loading ? '加载中' : (notLoaded ? '未加载' : '异常'))}`;
+            const notDeployed = !ok && (
+                msg.includes('模型不存在') ||
+                msg.includes('请从 modelscope 下载') ||
+                msg.includes('未部署') ||
+                msg.includes('检查模型目录')
+            );
+            const statusText = ok
+                ? '就绪'
+                : (loading ? '加载中' : (notLoaded ? '未加载' : (notDeployed ? '未部署' : '异常')));
+            const stateClass = ok
+                ? 'tag-ready'
+                : ((loading || notLoaded || notDeployed) ? 'tag-loading' : 'tag-down');
+            tag.className = 'model-tag ' + stateClass;
+            tag.textContent = `${labels[key] || key.toUpperCase()}: ${statusText}`;
             if (message) tag.title = String(message);
             else tag.removeAttribute('title');
         }

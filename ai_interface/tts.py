@@ -26,10 +26,10 @@ class Qwen3TTS:
     def _load_model(self):
         """加载 OpenVINO 模型"""
         if not self.model_dir.exists():
-            print(f"模型不存在: {self.model_dir}")
-            print("请从 ModelScope 下载:")
-            print("  modelscope download snake7gun/Qwen3-TTS-CustomVoice-0.6B-fp16-ov")
-            return
+            raise FileNotFoundError(
+                f"TTS 模型不存在: {self.model_dir}。"
+                "请从 ModelScope 下载 snake7gun/Qwen3-TTS-CustomVoice-0.6B-fp16-ov"
+            )
         
         try:
             from .qwen_3_tts_helper import OVQwen3TTSModel
@@ -41,10 +41,9 @@ class Qwen3TTS:
             )
             print("✓ TTS 模型加载成功 (OpenVINO 加速)")
         except ImportError as e:
-            print(f"导入 helper 失败: {e}")
-            print("请安装依赖: pip install qwen-tts")
+            raise ImportError(f"导入 helper 失败: {e}。请安装依赖: pip install qwen-tts") from e
         except Exception as e:
-            print(f"加载失败: {e}")
+            raise RuntimeError(f"TTS 加载失败: {e}") from e
 
     def _normalize_text(self, text: str) -> str:
         cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
